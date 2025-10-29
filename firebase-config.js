@@ -9,7 +9,6 @@ const firebaseConfig = {
   appId: "1:286539412641:web:a20e6386a2b90fe2bcace0"
 };
 
-// Inicializar SDK modular
 import { initializeApp } from "https://www.gstatic.com/firebasejs/9.22.1/firebase-app.js";
 import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/9.22.1/firebase-auth.js";
 import { getFirestore } from "https://www.gstatic.com/firebasejs/9.22.1/firebase-firestore.js";
@@ -18,5 +17,5 @@ const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
 
-// Exportar para usar en app
-window.__FB = { app, auth, db };
+// exportar objetos para usar en app.js
+export { app, auth, db };
