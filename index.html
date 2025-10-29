@@ -1,53 +1,82 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="es">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Inventario LM</title>
-<link rel="stylesheet" href="css/estilos.css">
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Inventario LM — Panel</title>
+<link rel="stylesheet" href="css/estilos.css" />
 </head>
 <body>
+  <div id="app" class="contenedor">
+    <header class="cabecera">
+      <h1>Inventario LM</h1>
+      <p class="sub">Panel de control — gestión de loot e inventarios</p>
+    </header>
 
-<header>
-    <h1>Inventario LM</h1>
-    <p>Gestiona los inventarios de tus usuarios de forma segura</p>
-</header>
+    <!-- Login -->
+    <section id="seccion-login" class="card">
+      <h2>Acceso administrador</h2>
+      <input id="email" type="email" placeholder="Email" />
+      <input id="password" type="password" placeholder="Contraseña" />
+      <div class="fila">
+        <button id="btn-entrar">Entrar</button>
+        <button id="btn-logout" style="display:none">Salir</button>
+      </div>
+      <p class="nota">Usa tu cuenta de administrador (Email/Contraseña).</p>
+    </section>
 
-<main>
+    <!-- App principal -->
+    <main id="principal" style="display:none">
+      <section class="panel izquierda card">
+        <h3>Enviar registro (formulario)</h3>
+        <form id="form-registro">
+          <label>Miembro</label>
+          <input id="buscar-miembro" placeholder="Buscar miembro..." autocomplete="off"/>
+          <div id="sugerencias-miembro" class="sugerencias"></div>
 
-<!-- LOGIN -->
-<section id="login">
-    <h2>Iniciar sesión</h2>
-    <input type="email" id="email" placeholder="Correo electrónico">
-    <input type="password" id="password" placeholder="Contraseña">
-    <button id="btnLogin">Iniciar sesión</button>
-    <p>O con Discord (pendiente de configuración)</p>
-</section>
+          <label>Objetos (el formulario agrupa varios objetos)</label>
+          <div id="contenedor-items"></div>
+          <button id="btn-add-item" type="button">Añadir objeto</button>
 
-<!-- PANEL PRINCIPAL -->
-<section id="panel" style="display:none;">
-    <h2>Usuarios</h2>
-    <div id="lista-usuarios"></div>
+          <label>Actividad</label>
+          <select id="actividad">
+            <option value="trafico avanzado">Tráfico avanzado</option>
+            <option value="trafico comun">Tráfico común</option>
+            <option value="trafico aereo">Tráfico aéreo</option>
+            <option value="trafico multiple">Tráfico múltiple</option>
+            <option value="barriles a la deriva">Barriles a la deriva</option>
+          </select>
 
-    <h2>Formulario de loot</h2>
-    <form id="formularioLoot">
-        <label for="usuario">Selecciona usuario:</label>
-        <select id="usuario"></select>
+          <div class="fila">
+            <button type="submit">Enviar (guardar + enviar embed)</button>
+          </div>
+        </form>
 
-        <label for="arma">Arma / Item:</label>
-        <input type="text" id="arma" placeholder="Ej: Subfusil, cargador">
+        <hr/>
 
-        <label for="cantidad">Cantidad:</label>
-        <input type="number" id="cantidad" placeholder="Ej: 30">
+        <h3>Catálogo</h3>
+        <div id="lista-catalogo"></div>
 
-        <button type="submit">Añadir al inventario</button>
-    </form>
+        <form id="form-catalogo" class="catalogo-form">
+          <input id="cat-nombre" placeholder="Nombre objeto" />
+          <input id="cat-valor" type="number" placeholder="Valor base $" />
+          <input id="cat-excepcion" placeholder="Pct excep (ej 0.8) o vacío" />
+          <label><input id="cat-pagable" type="checkbox" checked /> Pagable</label>
+          <button id="btn-crear-catalogo" type="button">Crear objeto</button>
+        </form>
+      </section>
 
-    <h2>Inventario del usuario</h2>
-    <div id="inventarioUsuario"></div>
-</section>
+      <section class="panel derecha card">
+        <h3>Miembros</h3>
+        <input id="filtro-miembros" placeholder="Filtrar miembros..." />
+        <div id="grid-miembros"></div>
+      </section>
+    </main>
+
+    <footer class="pie">Moneda: $ • Tema: oscuro</footer>
+  </div>
 
 <script src="firebase-config.js"></script>
-<script src="js/app.js"></script>
+<script type="module" src="js/aplicacion.js"></script>
 </body>
 </html>
