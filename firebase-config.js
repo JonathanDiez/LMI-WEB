@@ -1,12 +1,22 @@
-// Firebase configuración mínima (solo lectura para demo)
+// firebase-config.js
+// Pegar aquí la configuración web de Firebase (verdadera)
 const firebaseConfig = {
-    apiKey: "TU_API_KEY",
-    authDomain: "TU_PROJECT.firebaseapp.com",
-    projectId: "inventario-lm"
+  apiKey: "AIzaSyBmbQfw7KzEMaGvP3xft6g3vOTQpQkUjOE",
+  authDomain: "inventario-lm.firebaseapp.com",
+  projectId: "inventario-lm",
+  storageBucket: "inventario-lm.firebasestorage.app",
+  messagingSenderId: "286539412641",
+  appId: "1:286539412641:web:a20e6386a2b90fe2bcace0"
 };
 
-// Inicializar Firebase
-firebase.initializeApp(firebaseConfig);
-const db = firebase.firestore();
+// Inicializar SDK modular
+import { initializeApp } from "https://www.gstatic.com/firebasejs/9.22.1/firebase-app.js";
+import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/9.22.1/firebase-auth.js";
+import { getFirestore } from "https://www.gstatic.com/firebasejs/9.22.1/firebase-firestore.js";
 
-// Aquí se harían lecturas/escrituras seguras para inventarios reales
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getFirestore(app);
+
+// Exportar para usar en app
+window.__FB = { app, auth, db };
