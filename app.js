@@ -8,9 +8,27 @@ import {
 } from "https://www.gstatic.com/firebasejs/9.22.1/firebase-firestore.js";
 
 // ------ CONFIG / CONSTANTES ------
-const WEBHOOK_URL = "https://discord.com/api/webhooks/1433053884288602222/ecqxy7VTWOTJ13pCidyMotjSJwg-SyDIExw6KpzN6v-3TZepLTDxbI0tRQM488q5pNKX"; // <-- pega tu webhook (si lo expones)
-const DISCORD_CLIENT_ID = "1433087733433372712"; // opcional para login Discord
-const DISCORD_REDIRECT = "https://jonathandiez.github.io/LMI-WEB/"; // redirige al root
+const WEBHOOK_URL = "https://discord.com/api/webhooks/1433053884288602222/ecqxy7VTWOTJ13pCidyMotjSJwg-SyDIExw6KpzN6v-3TZepLTDxbI0tRQM488q5pNKX";
+const DISCORD_CLIENT_ID = "1433087733433372712";
+const DISCORD_REDIRECT = "https://jonathandiez.github.io/LMI-WEB/";
+const DISCORD_SCOPES = "identify email";
+
+// ------ Manejo del token si la página recibe #access_token directamente ------
+(function handleDirectRedirectToken() {
+  const hash = location.hash;
+  if (hash && hash.includes('access_token')) {
+    const params = new URLSearchParams(hash.slice(1));
+    const token = params.get('access_token');
+    if (token) {
+      sessionStorage.setItem('discord_token', token);
+      // cargar perfil Discord inmediatamente (no interfiere con Firebase)
+      cargarPerfilDiscord(token);
+      // limpiar hash de la URL para evitar que se reutilice
+      history.replaceState(null, '', window.location.pathname);
+      console.log('[DISCORD] token guardado desde redirect');
+    }
+  }
+})();
 
 // ------ DOM ------
 const seccionLogin = document.getElementById('seccion-login');
@@ -105,27 +123,30 @@ btnEntrar.addEventListener('click', async () => {
 
 btnLogout.addEventListener('click', async () => {
   try {
+    // limpiar token discord local
+    sessionStorage.removeItem('discord_token');
     await signOut(auth);
     window.location.reload();
   } catch (e) { console.error(e); toast('Error cerrando sesión','error'); }
 });
 btnLogoutSidebar.addEventListener('click', async () => {
-  try { await signOut(auth); window.location.reload(); } catch(e){ toast('Error cerrando sesión','error'); }
+  try { sessionStorage.removeItem('discord_token'); await signOut(auth); window.location.reload(); } catch(e){ toast('Error cerrando sesión','error'); }
 });
 
 // ------ DISCORD OAUTH (popup, implícito) ------
 btnDiscord.addEventListener('click', () => {
   if (!DISCORD_CLIENT_ID || DISCORD_CLIENT_ID === "TU_CLIENT_ID_DISCORD") {
-    toast('Pega tu Client ID de Discord en firebase-config.js/app.js para activar OAuth', 'error', 4500);
+    toast('Pega tu Client ID de Discord en app.js para activar OAuth', 'error', 4500);
     return;
   }
-  const scopes = encodeURIComponent('identify email');
+  const scopes = encodeURIComponent(DISCORD_SCOPES);
   const redirect = encodeURIComponent(DISCORD_REDIRECT);
-  const url = `https://discord.com/oauth2/authorize?client_id=1433087733433372712&response_type=code&redirect_uri=https%3A%2F%2Fjonathandiez.github.io%2FLMI-WEB%2F&scope=email+identify`;
-  const w = window.open(url, 'discord_oauth', 'width=600,height=700');
-  // recibir token desde popup (ver abajo)
+  const url = `https://discord.com/oauth2/authorize?client_id=${DISCORD_CLIENT_ID}&redirect_uri=${redirect}&response_type=token&scope=${scopes}`;
+  // abrimos popup; el popup redirigirá al redirect y el handler en el popup enviará postMessage al opener
+  window.open(url, 'discord_oauth', 'width=600,height=700');
 });
 
+// popup -> opener listener (se activa si el popup envía postMessage)
 window.addEventListener('message', (ev) => {
   if (ev.data?.discord_token) {
     const t = ev.data.discord_token;
@@ -156,7 +177,11 @@ window.addEventListener('message', (ev) => {
 async function cargarPerfilDiscord(token) {
   try {
     const r = await fetch('https://discord.com/api/users/@me', { headers: { Authorization: 'Bearer ' + token } });
-    if (!r.ok) return;
+    if (!r.ok) {
+      console.warn('[DISCORD] token inválido o expirado', r.status);
+      sessionStorage.removeItem('discord_token');
+      return;
+    }
     const user = await r.json();
     // montar avatar
     const avatarURL = user.avatar ? `https://cdn.discordapp.com/avatars/${user.id}/${user.avatar}.png` : '';
@@ -187,6 +212,12 @@ onAuthStateChanged(auth, async user => {
     seccionLogin.style.display = 'block';
     seccionDashboard.style.display = 'none';
     userBadge.style.display = 'none';
+    // si no hay user pero sí token discord, mostramos identidad visual (opcional)
+    const tk = sessionStorage.getItem('discord_token');
+    if (tk) {
+      cargarPerfilDiscord(tk);
+      // no cargamos datos sensibles ni habilitamos acciones admin hasta que Firebase autentique
+    }
   }
 });
 
@@ -325,7 +356,7 @@ function renderMiembros(list){
 
     el.querySelector('.btn-ver').onclick = ()=> mostrarInventarioDetalle(m);
     el.querySelector('.btn-edit').onclick = ()=> editarMiembroPrompt(m);
-    el.querySelector('.btn-del').onclick = async ()=>{
+    el.querySelector('.btn-del').onclick = async ()=>{ 
       if (!confirm('Borrar miembro '+m.nombre+' ?')) return;
       await deleteDoc(doc(db,"miembros",m.id));
       toast('Miembro eliminado','info');
