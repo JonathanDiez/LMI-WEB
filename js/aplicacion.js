@@ -36,19 +36,31 @@ let miembros = [];
 let rangos = {};
 let usuarioActual = null;
 
-// ---- AUTENTICACIÓN ----
+// --- Handler de login (reemplazar el anterior) ---
 btnEntrar.onclick = async () => {
+  console.log('[DEBUG] click en boton Entrar');
   const email = document.getElementById('email').value.trim();
   const password = document.getElementById('password').value.trim();
-  if (!email || !password) return alert("Rellena email y contraseña");
-  try {
-    await signInWithEmailAndPassword(auth, email, password);
-  } catch (e) {
-    alert("Error inicio sesión: " + e.message);
+  console.log('[DEBUG] credenciales->', { email: email ? '****' : '(vacío)', password: password ? '****' : '(vacío)' });
+
+  if (!email || !password) {
+    alert("Rellena email y contraseña");
+    return;
   }
-};
-btnLogout.onclick = async () => {
-  await signOut(auth);
+
+  try {
+    // usa la función modular importada al principio del archivo
+    const resp = await signInWithEmailAndPassword(auth, email, password);
+    console.log('[DEBUG] signInWithEmailAndPassword resp:', resp);
+    alert('Inicio de sesión correcto: ' + (resp.user.email || resp.user.uid));
+  } catch (err) {
+    // muestra mensaje claro y el error devuelto por Firebase
+    console.error('[DEBUG] fallo signIn:', err);
+    let msg = err && err.message ? err.message : String(err);
+    // extraer error concreto si viene en err.code
+    if (err.code) msg = `${err.code} — ${msg}`;
+    alert('Error al iniciar sesión: ' + msg);
+  }
 };
 
 // Estado auth
