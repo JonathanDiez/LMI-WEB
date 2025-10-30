@@ -1,0 +1,1355 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Inventario LM — Panel</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    :root {
+      --bg-primary: #0a0e27;
+      --bg-secondary: #151932;
+      --bg-card: #1a1f3a;
+      --accent: #00c2a8;
+      --accent-hover: #00a892;
+      --text-primary: #ffffff;
+      --text-secondary: #8b92b0;
+      --border: #2a2f4a;
+      --error: #ef4444;
+      --success: #22c55e;
+      --warning: #f59e0b;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Inter', sans-serif;
+      background: var(--bg-primary);
+      color: var(--text-primary);
+      line-height: 1.6;
+    }
+
+    .app-contenedor {
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* HEADER */
+    .cabecera {
+      background: var(--bg-secondary);
+      padding: 1.5rem 2rem;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .cabecera h1 {
+      font-size: 1.5rem;
+      font-weight: 600;
+      margin-bottom: 0.25rem;
+    }
+
+    .cabecera .sub {
+      font-size: 0.875rem;
+      color: var(--text-secondary);
+    }
+
+    .user-badge {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+    }
+
+    .user-badge img {
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+    }
+
+    .user-name {
+      font-size: 0.875rem;
+      font-weight: 500;
+    }
+
+    .small {
+      font-size: 0.75rem;
+      color: var(--text-secondary);
+    }
+
+    /* BUTTONS */
+    .btn-pri, .btn-sec {
+      padding: 0.625rem 1.25rem;
+      border: none;
+      border-radius: 8px;
+      font-size: 0.875rem;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .btn-pri {
+      background: var(--accent);
+      color: white;
+    }
+
+    .btn-pri:hover {
+      background: var(--accent-hover);
+    }
+
+    .btn-sec {
+      background: var(--bg-card);
+      color: var(--text-primary);
+      border: 1px solid var(--border);
+    }
+
+    .btn-sec:hover {
+      border-color: var(--accent);
+    }
+
+    .btn-delete {
+      background: var(--error);
+      color: white;
+      padding: 0.5rem;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 36px;
+      height: 36px;
+      transition: all 0.2s;
+    }
+
+    .btn-delete:hover {
+      background: #dc2626;
+    }
+
+    /* LOGIN */
+    .login-container {
+      max-width: 420px;
+      margin: 4rem auto;
+      padding: 2rem;
+      background: var(--bg-card);
+      border-radius: 12px;
+      border: 1px solid var(--border);
+    }
+
+    .login-header {
+      text-align: center;
+      margin-bottom: 2rem;
+    }
+
+    .login-icon {
+      font-size: 3rem;
+      margin-bottom: 1rem;
+    }
+
+    .login-header h2 {
+      font-size: 1.5rem;
+      margin-bottom: 0.5rem;
+    }
+
+    .input-group {
+      margin-bottom: 1.25rem;
+    }
+
+    .input-label {
+      display: block;
+      font-size: 0.875rem;
+      font-weight: 500;
+      margin-bottom: 0.5rem;
+      color: var(--text-primary);
+    }
+
+    input, select {
+      width: 100%;
+      padding: 0.75rem;
+      background: var(--bg-secondary);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text-primary);
+      font-size: 0.875rem;
+      transition: border 0.2s;
+    }
+
+    input:focus, select:focus {
+      outline: none;
+      border-color: var(--accent);
+    }
+
+    .full-width {
+      width: 100%;
+    }
+
+    .nota {
+      margin-top: 1.5rem;
+      text-align: center;
+      color: var(--text-secondary);
+    }
+
+    /* DASHBOARD */
+    .dashboard {
+      display: flex;
+      flex: 1;
+      gap: 2rem;
+      padding: 2rem;
+      max-width: 1600px;
+      margin: 0 auto;
+      width: 100%;
+    }
+
+    /* SIDEBAR */
+    .sidebar {
+      width: 260px;
+      background: var(--bg-card);
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      padding: 1.5rem;
+      height: fit-content;
+      position: sticky;
+      top: 2rem;
+    }
+
+    .sidebar-title {
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--text-secondary);
+      margin-bottom: 1rem;
+      padding: 0 0.5rem;
+    }
+
+    .nav-btn {
+      width: 100%;
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      padding: 0.75rem 1rem;
+      background: none;
+      border: none;
+      border-radius: 8px;
+      color: var(--text-secondary);
+      font-size: 0.875rem;
+      cursor: pointer;
+      transition: all 0.2s;
+      margin-bottom: 0.25rem;
+    }
+
+    .nav-btn:hover {
+      background: var(--bg-secondary);
+      color: var(--text-primary);
+    }
+
+    .nav-btn.active {
+      background: var(--accent);
+      color: white;
+    }
+
+    .nav-icon {
+      font-size: 1.125rem;
+    }
+
+    .sidebar-footer {
+      margin-top: 2rem;
+      padding-top: 1rem;
+      border-top: 1px solid var(--border);
+    }
+
+    .nav-logout {
+      width: 100%;
+      padding: 0.75rem 1rem;
+      background: none;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text-secondary);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      justify-content: center;
+      transition: all 0.2s;
+    }
+
+    .nav-logout:hover {
+      border-color: var(--error);
+      color: var(--error);
+    }
+
+    /* CONTENT */
+    .contenido {
+      flex: 1;
+    }
+
+    .view {
+      display: none;
+      background: var(--bg-card);
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      padding: 2rem;
+    }
+
+    .view.active {
+      display: block;
+    }
+
+    .view-header {
+      margin-bottom: 2rem;
+      padding-bottom: 1.5rem;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .view-header h3 {
+      font-size: 1.5rem;
+      margin-bottom: 0.5rem;
+    }
+
+    /* FORM */
+    .form-section {
+      margin-bottom: 1.5rem;
+      position: relative;
+    }
+
+    .form-label {
+      display: block;
+      font-size: 0.875rem;
+      font-weight: 500;
+      margin-bottom: 0.5rem;
+    }
+
+    /* DROPDOWN SUGGESTIONS */
+    .sugerencias {
+      position: absolute;
+      top: 100%;
+      left: 0;
+      right: 0;
+      background: var(--bg-secondary);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      margin-top: 0.25rem;
+      max-height: 200px;
+      overflow-y: auto;
+      z-index: 10;
+      display: none;
+    }
+
+    .sugerencias.active {
+      display: block;
+    }
+
+    .sugerencias > div {
+      padding: 0.75rem 1rem;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+
+    .sugerencias > div:hover {
+      background: var(--bg-card);
+    }
+
+    /* ITEMS */
+    .section-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 1rem;
+    }
+
+    .items-container {
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+    }
+
+    .item-row {
+      display: grid;
+      grid-template-columns: 2fr 100px 36px;
+      gap: 0.75rem;
+      align-items: center;
+    }
+
+    .btn-add-modern {
+      background: var(--bg-secondary);
+      border: 2px dashed var(--border);
+      color: var(--accent);
+      padding: 1rem;
+      border-radius: 8px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.5rem;
+      font-weight: 500;
+      transition: all 0.2s;
+      margin-top: 1rem;
+    }
+
+    .btn-add-modern:hover {
+      border-color: var(--accent);
+      background: var(--bg-card);
+    }
+
+    .form-actions {
+      margin-top: 2rem;
+      padding-top: 1.5rem;
+      border-top: 1px solid var(--border);
+      display: flex;
+      justify-content: flex-end;
+    }
+
+    .form-actions .btn-pri {
+      min-width: 200px;
+    }
+
+    /* MIEMBROS */
+    .grid-dos {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 2rem;
+    }
+
+    .panel-section {
+      margin-bottom: 2rem;
+    }
+
+    .panel-header {
+      margin-bottom: 1.5rem;
+    }
+
+    .panel-header h4 {
+      font-size: 1.125rem;
+      font-weight: 600;
+    }
+
+    .miembros-list {
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+    }
+
+    .miembro-card {
+      background: var(--bg-secondary);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 1rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      transition: all 0.2s;
+      cursor: pointer;
+    }
+
+    .miembro-card:hover {
+      border-color: var(--accent);
+    }
+
+    .miembro-info {
+      flex: 1;
+    }
+
+    .miembro-info strong {
+      display: block;
+      margin-bottom: 0.25rem;
+    }
+
+    .checkbox-label {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      cursor: pointer;
+      font-size: 0.875rem;
+    }
+
+    /* RANGOS */
+    .rangos-list {
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+    }
+
+    .rango-item {
+      background: var(--bg-secondary);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 1rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .rango-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.5rem 1rem;
+      border-radius: 6px;
+      font-weight: 600;
+    }
+
+    .rango-percentages {
+      display: flex;
+      gap: 0.75rem;
+      margin-top: 0.5rem;
+    }
+
+    .pct-badge {
+      background: var(--bg-card);
+      padding: 0.25rem 0.75rem;
+      border-radius: 4px;
+      font-size: 0.75rem;
+      border: 1px solid var(--border);
+    }
+
+    /* CATALOGO */
+    .catalogo-list {
+      display: grid;
+      gap: 0.75rem;
+    }
+
+    .catalogo-item {
+      background: var(--bg-secondary);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 1rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    /* INVENTARIOS */
+    .search-section {
+      margin-bottom: 1.5rem;
+    }
+
+    .inventarios-grid {
+      display: grid;
+      gap: 1rem;
+    }
+
+    .inventario-card {
+      background: var(--bg-secondary);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 1.5rem;
+    }
+
+    /* TOASTS */
+    .toasts {
+      position: fixed;
+      top: 1rem;
+      right: 1rem;
+      z-index: 1000;
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+    }
+
+    .toast {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-left: 4px solid var(--accent);
+      padding: 1rem 1.5rem;
+      border-radius: 8px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+      animation: slideIn 0.3s;
+      transition: opacity 0.3s;
+    }
+
+    .toast.error {
+      border-left-color: var(--error);
+    }
+
+    @keyframes slideIn {
+      from {
+        transform: translateX(100%);
+        opacity: 0;
+      }
+      to {
+        transform: translateX(0);
+        opacity: 1;
+      }
+    }
+
+    /* MODAL */
+    .modal-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.7);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 100;
+    }
+
+    .modal-overlay.active {
+      display: flex;
+    }
+
+    .modal-content {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 2rem;
+      max-width: 800px;
+      max-height: 90vh;
+      overflow-y: auto;
+      width: 90%;
+    }
+
+    .modal-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 1.5rem;
+      padding-bottom: 1rem;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .modal-close {
+      background: none;
+      border: none;
+      font-size: 1.5rem;
+      cursor: pointer;
+      color: var(--text-secondary);
+      padding: 0.25rem;
+    }
+
+    .inventario-items {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+      gap: 1rem;
+      margin-top: 1.5rem;
+    }
+
+    .item-card {
+      background: var(--bg-secondary);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 1rem;
+      position: relative;
+    }
+
+    .item-image {
+      width: 100%;
+      height: 100px;
+      background: var(--bg-primary);
+      border-radius: 6px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 2rem;
+      margin-bottom: 0.75rem;
+    }
+
+    .item-delete {
+      position: absolute;
+      top: 0.5rem;
+      right: 0.5rem;
+      width: 24px;
+      height: 24px;
+      padding: 0;
+      font-size: 0.75rem;
+    }
+
+    @media (max-width: 768px) {
+      .dashboard {
+        flex-direction: column;
+      }
+
+      .sidebar {
+        width: 100%;
+        position: static;
+      }
+
+      .grid-dos {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div id="app" class="app-contenedor">
+    <!-- HEADER -->
+    <header class="cabecera">
+      <div class="cab-izq">
+        <h1>🎯 Inventario LM</h1>
+        <p class="sub">Sistema de gestión de loot, miembros y pagos</p>
+      </div>
+      <div class="cab-der">
+        <div id="user-badge" class="user-badge" style="display:none;">
+          <img id="user-avatar" src="" alt="avatar" style="display:none;" />
+          <div class="user-info">
+            <div id="user-nombre" class="user-name"></div>
+            <span class="small">Administrador</span>
+          </div>
+          <button id="btn-logout" class="btn-sec">Salir</button>
+        </div>
+      </div>
+    </header>
+
+    <!-- MAIN -->
+    <main id="main-root">
+      <!-- LOGIN -->
+      <section id="seccion-login" class="login-container">
+        <div class="login-header">
+          <div class="login-icon">🔐</div>
+          <h2>Acceso Administrador</h2>
+          <p class="sub">Ingresa tus credenciales para continuar</p>
+        </div>
+        
+        <div class="login-form">
+          <div class="input-group">
+            <label class="input-label">Correo electrónico</label>
+            <input id="email" type="email" placeholder="admin@example.com" />
+          </div>
+          
+          <div class="input-group">
+            <label class="input-label">Contraseña</label>
+            <input id="password" type="password" placeholder="••••••••" />
+          </div>
+          
+          <button id="btn-entrar" class="btn-pri full-width">Iniciar sesión</button>
+        </div>
+        
+        <p class="nota small">
+          Usa las credenciales creadas en Firebase Auth
+        </p>
+      </section>
+
+      <!-- DASHBOARD -->
+      <section id="seccion-dashboard" class="dashboard" style="display:none;">
+        <!-- SIDEBAR -->
+        <aside class="sidebar">
+          <div class="sidebar-header">
+            <h4 class="sidebar-title">Panel de Control</h4>
+          </div>
+          
+          <nav class="nav-menu">
+            <button data-view="formulario" class="nav-btn active">
+              <span class="nav-icon">📝</span>
+              <span>Nuevo LOOT</span>
+            </button>
+            <button data-view="miembros" class="nav-btn">
+              <span class="nav-icon">👥</span>
+              <span>Miembros</span>
+            </button>
+            <button data-view="catalogo" class="nav-btn">
+              <span class="nav-icon">📦</span>
+              <span>Catálogo</span>
+            </button>
+            <button data-view="inventarios" class="nav-btn">
+              <span class="nav-icon">🎒</span>
+              <span>Inventarios</span>
+            </button>
+          </nav>
+          
+          <div class="sidebar-footer">
+            <button id="btn-logout-sidebar" class="nav-logout">
+              <span>🚪</span>
+              Cerrar sesión
+            </button>
+          </div>
+        </aside>
+
+        <!-- CONTENT -->
+        <section class="contenido">
+          <!-- FORMULARIO -->
+          <div id="view-formulario" class="view active">
+            <div class="view-header">
+              <h3>📝 Enviar Registro de Loot</h3>
+              <p class="sub">Registra los objetos encontrados por los miembros</p>
+            </div>
+            
+            <form id="form-registro">
+              <div class="form-section">
+                <label class="form-label">Nombre del Miembro</label>
+                <input id="buscar-miembro" placeholder="Buscar miembro..." autocomplete="off" />
+                <div id="sugerencias-miembro" class="sugerencias"></div>
+              </div>
+
+              <div class="form-section">
+                <label class="form-label">Tipo de actividad</label>
+                <select id="actividad">
+                  <option value="">-- Selecciona una actividad --</option>
+                  <option value="Trafico Comun">🚗 Tráfico Común</option>
+                  <option value="Trafico Avanzado">🚛 Tráfico Avanzado</option>
+                  <option value="Trafico Multiple">🔄 Tráfico Múltiple</option>
+                  <option value="Trafico Aereo">✈️ Tráfico Aéreo</option>
+                  <option value="Busqueda Acuatica">🌊 Búsqueda Acuática</option>
+                  <option value="Barriles a la Deriva">🛢️ Barriles a la Deriva</option>
+                  <option value="Comunicado Interno">📋 Comunicado Interno</option>
+                </select>
+              </div>
+
+              <div class="form-section">
+                <div class="section-header">
+                  <label class="form-label">Objetos encontrados</label>
+                </div>
+                <div id="contenedor-items" class="items-container"></div>
+                <button id="btn-add-item" type="button" class="btn-add-modern">
+                  <span>➕</span>
+                  Añadir objeto
+                </button>
+              </div>
+
+              <div class="form-actions">
+                <button type="submit" class="btn-pri">
+                  Enviar registro
+                </button>
+              </div>
+            </form>
+          </div>
+
+          <!-- MIEMBROS -->
+          <div id="view-miembros" class="view">
+            <div class="view-header">
+              <h3>👥 Gestión de Miembros</h3>
+              <p class="sub">Administra los miembros de tu organización</p>
+            </div>
+            
+            <div class="grid-dos">
+              <div class="panel-section">
+                <div class="panel-header">
+                  <h4>Crear nuevo miembro</h4>
+                </div>
+                <div class="form">
+                  <div class="input-group">
+                    <label class="input-label">Nombre del miembro</label>
+                    <input id="mi-nombre" placeholder="Ej: Juan Pérez" />
+                  </div>
+                  
+                  <div class="input-group">
+                    <label class="input-label">Rango asignado</label>
+                    <select id="mi-rango">
+                      <option value="">-- Selecciona un rango --</option>
+                    </select>
+                  </div>
+                  
+                  <div class="checkbox-label">
+                    <input id="mi-500" type="checkbox" />
+                    <span>¿Tiene las 500 aportaciones?</span>
+                  </div>
+                  
+                  <button id="btn-crear-miembro" class="btn-pri full-width" style="margin-top: 1rem;">
+                    Crear miembro
+                  </button>
+                </div>
+              </div>
+
+              <div class="panel-section">
+                <div class="panel-header">
+                  <h4>Lista de miembros activos</h4>
+                </div>
+                <div class="search-section">
+                  <input id="filtro-miembros" placeholder="🔍 Filtrar por nombre..." />
+                </div>
+                <div id="grid-miembros" class="miembros-list"></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- CATALOGO -->
+          <div id="view-catalogo" class="view">
+            <div class="view-header">
+              <h3>📦 Catálogo de Objetos</h3>
+              <p class="sub">Objetos disponibles que pueden aparecer en inventarios</p>
+            </div>
+            
+            <div class="panel-section">
+              <div class="panel-header">
+                <h4>Objetos registrados</h4>
+              </div>
+              <div id="lista-catalogo" class="catalogo-list"></div>
+            </div>
+
+            <div class="panel-section" style="margin-top: 2rem; padding-top: 2rem; border-top: 1px solid var(--border);">
+              <div class="panel-header">
+                <h4>Agregar nuevo objeto</h4>
+              </div>
+              <div class="form">
+                <div class="input-group">
+                  <label class="input-label">Nombre del objeto</label>
+                  <input id="cat-nombre" placeholder="Ej: AK-47" />
+                </div>
+                
+                <div class="input-group">
+                  <label class="input-label">Valor base ($)</label>
+                  <input id="cat-valor" type="number" placeholder="15000" />
+                </div>
+                
+                <div class="checkbox-label">
+                  <input id="cat-pagable" type="checkbox" checked />
+                  <span>Objeto pagable</span>
+                </div>
+                
+                <button id="btn-crear-catalogo" class="btn-pri full-width" style="margin-top: 1rem;">
+                  Agregar al catálogo
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- INVENTARIOS -->
+          <div id="view-inventarios" class="view">
+            <div class="view-header">
+              <h3>🎒 Inventarios de Miembros</h3>
+              <p class="sub">Consulta inventarios por usuario o busca quién tiene un objeto específico</p>
+            </div>
+            
+            <div class="search-section">
+              <input id="buscador-inventario" placeholder="🔍 Buscar por nombre de usuario o por objeto..." />
+            </div>
+            
+            <div id="grid-inventarios" class="inventarios-grid"></div>
+          </div>
+        </section>
+      </section>
+    </main>
+
+    <!-- MODAL INVENTARIO -->
+    <div id="modal-inventario" class="modal-overlay">
+      <div class="modal-content">
+        <div class="modal-header">
+          <div>
+            <h3 id="modal-titulo"></h3>
+            <p class="sub" id="modal-subtitulo"></p>
+          </div>
+          <button class="modal-close" id="modal-close">✕</button>
+        </div>
+        <div id="modal-body"></div>
+      </div>
+    </div>
+
+    <!-- TOASTS -->
+    <div id="toasts" class="toasts"></div>
+  </div>
+
+  <script type="module">
+    // DEMO DATA
+    const rangosDemo = {
+      'Sangre Nueva': { nivel: 1, color: '#22c55e', pct: 0.20, pct500: 0.30 },
+      'Soldado': { nivel: 3, color: '#3b82f6', pct: 0.35, pct500: 0.45 },
+      'Capo': { nivel: 7, color: '#f59e0b', pct: 0.50, pct500: 0.60 },
+      'Blood Line': { nivel: 10, color: '#ef4444', pct: 0.65, pct500: 0.75 }
+    };
+
+    let miembros = [
+      { id: 'juan-perez', nombre: 'Juan Pérez', rangoId: 'Soldado', tiene500: true },
+      { id: 'maria-lopez', nombre: 'María López', rangoId: 'Capo', tiene500: false }
+    ];
+
+    let catalogo = [
+      { id: 'ak-47', nombre: 'AK-47', valorBase: 15000, pagable: true },
+      { id: 'm4a1', nombre: 'M4A1', valorBase: 18000, pagable: true },
+      { id: 'usp', nombre: 'USP', valorBase: 5000, pagable: true }
+    ];
+
+    let inventarios = {};
+
+    // UTILS
+    function toast(msg, type='info', timeout=3000) {
+      const el = document.createElement('div');
+      el.className = 'toast' + (type==='error'?' error':'');
+      el.textContent = msg;
+      document.getElementById('toasts').appendChild(el);
+      setTimeout(() => el.style.opacity = '0', timeout-400);
+      setTimeout(() => el.remove(), timeout);
+    }
+
+    // NAVEGACIÓN
+    document.querySelectorAll('.nav-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        const view = btn.dataset.view;
+        document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+        document.getElementById('view-' + view)?.classList.add('active');
+      });
+    });
+
+    // LOGIN
+    document.getElementById('btn-entrar').addEventListener('click', () => {
+      const email = document.getElementById('email').value.trim();
+      const pass = document.getElementById('password').value.trim();
+      if (!email || !pass) return toast('Rellena email y contraseña', 'error');
+      
+      // Simular login exitoso
+      document.getElementById('seccion-login').style.display = 'none';
+      document.getElementById('seccion-dashboard').style.display = 'flex';
+      document.getElementById('user-badge').style.display = 'flex';
+      document.getElementById('user-nombre').textContent = email;
+      toast('Sesión iniciada');
+      cargarDatos();
+    });
+
+    // LOGOUT
+    function logout() {
+      document.getElementById('seccion-login').style.display = 'block';
+      document.getElementById('seccion-dashboard').style.display = 'none';
+      document.getElementById('user-badge').style.display = 'none';
+      toast('Sesión cerrada');
+    }
+    document.getElementById('btn-logout').addEventListener('click', logout);
+    document.getElementById('btn-logout-sidebar').addEventListener('click', logout);
+
+    // CARGAR DATOS
+    function cargarDatos() {
+      renderSelectRangos();
+      renderMiembros();
+      renderCatalogo();
+      contenedorItems.innerHTML = '';
+      addItemRow();
+    }
+
+    // SUGERENCIAS MIEMBROS
+    const buscarMiembroInput = document.getElementById('buscar-miembro');
+    const sugerenciasMiembro = document.getElementById('sugerencias-miembro');
+    
+    buscarMiembroInput.addEventListener('input', () => {
+      const q = buscarMiembroInput.value.trim().toLowerCase();
+      sugerenciasMiembro.innerHTML = '';
+      
+      if (!q) {
+        sugerenciasMiembro.classList.remove('active');
+        return;
+      }
+      
+      const matches = miembros.filter(m => m.nombre.toLowerCase().includes(q)).slice(0, 8);
+      
+      if (matches.length > 0) {
+        sugerenciasMiembro.classList.add('active');
+        matches.forEach(m => {
+          const div = document.createElement('div');
+          div.textContent = m.nombre;
+          div.onclick = () => {
+            buscarMiembroInput.value = m.nombre;
+            buscarMiembroInput.dataset.id = m.id;
+            sugerenciasMiembro.classList.remove('active');
+            sugerenciasMiembro.innerHTML = '';
+          };
+          sugerenciasMiembro.appendChild(div);
+        });
+      } else {
+        sugerenciasMiembro.classList.remove('active');
+      }
+    });
+
+    // Cerrar sugerencias al hacer click fuera
+    document.addEventListener('click', (e) => {
+      if (!buscarMiembroInput.contains(e.target) && !sugerenciasMiembro.contains(e.target)) {
+        sugerenciasMiembro.classList.remove('active');
+      }
+    });
+
+    // ITEMS DINÁMICOS
+    const contenedorItems = document.getElementById('contenedor-items');
+    
+    function addItemRow() {
+      const row = document.createElement('div');
+      row.className = 'item-row';
+      row.innerHTML = `
+        <select class="sel-item">
+          ${catalogo.map(c => `<option value="${c.id}">${c.nombre} (${c.valorBase})</option>`).join('')}
+        </select>
+        <input class="qty-item" type="number" min="1" value="1" />
+        <button class="btn-delete btn-remove-item" type="button">🗑️</button>
+      `;
+      contenedorItems.appendChild(row);
+      row.querySelector('.btn-remove-item').onclick = () => row.remove();
+    }
+
+    document.getElementById('btn-add-item').addEventListener('click', () => addItemRow());
+
+    // ENVIAR FORMULARIO
+    document.getElementById('form-registro').addEventListener('submit', (e) => {
+      e.preventDefault();
+      const memberId = buscarMiembroInput.dataset.id;
+      if (!memberId) return toast('Selecciona un miembro válido', 'error');
+      
+      const filas = Array.from(contenedorItems.querySelectorAll('.item-row'));
+      if (filas.length === 0) return toast('Añade al menos un objeto', 'error');
+      
+      const actividad = document.getElementById('actividad').value;
+      if (!actividad) return toast('Selecciona la actividad', 'error');
+
+      const items = filas.map(r => {
+        const id = r.querySelector('.sel-item').value;
+        const qty = Number(r.querySelector('.qty-item').value) || 0;
+        const item = catalogo.find(c => c.id === id);
+        return { itemId: id, nombre: item.nombre, qty, valorBase: item.valorBase };
+      });
+
+      // Guardar en inventario
+      if (!inventarios[memberId]) inventarios[memberId] = [];
+      items.forEach(item => {
+        const existing = inventarios[memberId].find(i => i.itemId === item.itemId);
+        if (existing) {
+          existing.qty += item.qty;
+        } else {
+          inventarios[memberId].push({...item});
+        }
+      });
+
+      toast('Registro guardado correctamente');
+      contenedorItems.innerHTML = '';
+      addItemRow();
+      buscarMiembroInput.value = '';
+      delete buscarMiembroInput.dataset.id;
+      document.getElementById('actividad').value = '';
+    });
+
+    // MIEMBROS
+    function renderSelectRangos() {
+      const select = document.getElementById('mi-rango');
+      select.innerHTML = '<option value="">-- Selecciona un rango --</option>' +
+        Object.keys(rangosDemo).map(k => `<option value="${k}">${k}</option>`).join('');
+    }
+
+    document.getElementById('btn-crear-miembro').addEventListener('click', () => {
+      const nombre = document.getElementById('mi-nombre').value.trim();
+      if (!nombre) return toast('Nombre obligatorio', 'error');
+      
+      const id = nombre.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-_]/g, '');
+      const rango = document.getElementById('mi-rango').value;
+      const tiene500 = document.getElementById('mi-500').checked;
+
+      miembros.push({ id, nombre, rangoId: rango, tiene500 });
+      toast('Miembro creado: ' + nombre);
+      document.getElementById('mi-nombre').value = '';
+      document.getElementById('mi-rango').value = '';
+      document.getElementById('mi-500').checked = false;
+      renderMiembros();
+    });
+
+    function renderMiembros(lista = miembros) {
+      const grid = document.getElementById('grid-miembros');
+      grid.innerHTML = '';
+      
+      lista.forEach(m => {
+        const el = document.createElement('div');
+        el.className = 'miembro-card';
+        el.innerHTML = `
+          <div class="miembro-info">
+            <strong>${m.nombre}</strong>
+            <div class="small">Rango: ${m.rangoId || '—'}</div>
+            ${m.tiene500 ? '<span class="small" style="color: var(--success)">✅ 500 aportaciones</span>' : ''}
+          </div>
+          <button class="btn-delete" data-id="${m.id}">🗑️</button>
+        `;
+        
+        el.onclick = (e) => {
+          if (!e.target.classList.contains('btn-delete')) {
+            mostrarInventarioMiembro(m);
+          }
+        };
+        
+        el.querySelector('.btn-delete').onclick = (e) => {
+          e.stopPropagation();
+          if (!confirm('¿Eliminar miembro ' + m.nombre + '?')) return;
+          miembros = miembros.filter(x => x.id !== m.id);
+          toast('Miembro eliminado');
+          renderMiembros();
+        };
+        
+        grid.appendChild(el);
+      });
+    }
+
+    document.getElementById('filtro-miembros').addEventListener('input', (e) => {
+      const q = e.target.value.toLowerCase();
+      const filtered = miembros.filter(m => m.nombre.toLowerCase().includes(q));
+      renderMiembros(filtered);
+    });
+
+    // CATALOGO
+    function renderCatalogo() {
+      const lista = document.getElementById('lista-catalogo');
+      lista.innerHTML = '';
+      
+      catalogo.forEach(c => {
+        const el = document.createElement('div');
+        el.className = 'catalogo-item';
+        el.innerHTML = `
+          <div>
+            <strong>${c.nombre}</strong>
+            <div class="small">Valor: ${c.valorBase} ${c.pagable === false ? '• No pagable' : ''}</div>
+          </div>
+          <button class="btn-delete" data-id="${c.id}">🗑️</button>
+        `;
+        
+        el.querySelector('.btn-delete').onclick = () => {
+          if (!confirm('¿Borrar objeto del catálogo?')) return;
+          catalogo = catalogo.filter(x => x.id !== c.id);
+          toast('Objeto eliminado');
+          renderCatalogo();
+        };
+        
+        lista.appendChild(el);
+      });
+    }
+
+    document.getElementById('btn-crear-catalogo').addEventListener('click', () => {
+      const nombre = document.getElementById('cat-nombre').value.trim();
+      const valor = Number(document.getElementById('cat-valor').value) || 0;
+      const pagable = document.getElementById('cat-pagable').checked;
+      
+      if (!nombre || valor <= 0) return toast('Nombre y valor válidos requeridos', 'error');
+      
+      const id = nombre.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-_]/g, '');
+      catalogo.push({ id, nombre, valorBase: valor, pagable });
+      
+      toast('Objeto agregado al catálogo');
+      document.getElementById('cat-nombre').value = '';
+      document.getElementById('cat-valor').value = '';
+      document.getElementById('cat-pagable').checked = true;
+      renderCatalogo();
+    });
+
+    // MODAL INVENTARIO
+    const modal = document.getElementById('modal-inventario');
+    const modalClose = document.getElementById('modal-close');
+    
+    modalClose.onclick = () => modal.classList.remove('active');
+    modal.onclick = (e) => {
+      if (e.target === modal) modal.classList.remove('active');
+    };
+
+    function mostrarInventarioMiembro(miembro) {
+      const items = inventarios[miembro.id] || [];
+      const rango = rangosDemo[miembro.rangoId];
+      const pct = miembro.tiene500 ? (rango?.pct500 || 0) : (rango?.pct || 0);
+      
+      let totalValor = 0;
+      items.forEach(item => {
+        totalValor += item.valorBase * item.qty * pct;
+      });
+
+      document.getElementById('modal-titulo').textContent = miembro.nombre;
+      document.getElementById('modal-subtitulo').innerHTML = `
+        Rango: ${miembro.rangoId || '—'} • 
+        Porcentaje: ${Math.round(pct * 100)}% • 
+        <strong>Total: ${Math.round(totalValor)}</strong>
+      `;
+
+      const body = document.getElementById('modal-body');
+      
+      if (items.length === 0) {
+        body.innerHTML = '<p class="sub">Este miembro no tiene objetos en su inventario</p>';
+      } else {
+        body.innerHTML = `
+          <div style="display: flex; justify-content: space-between; margin-bottom: 1rem;">
+            <h4>Objetos en inventario (${items.length})</h4>
+            <button class="btn-delete" id="clear-inventory">Vaciar inventario</button>
+          </div>
+          <div class="inventario-items" id="items-grid"></div>
+        `;
+
+        const grid = document.getElementById('items-grid');
+        items.forEach((item, index) => {
+          const valor = Math.round(item.valorBase * pct);
+          const card = document.createElement('div');
+          card.className = 'item-card';
+          card.innerHTML = `
+            <button class="btn-delete item-delete" data-index="${index}">🗑️</button>
+            <div class="item-image">📦</div>
+            <strong>${item.nombre}</strong>
+            <div class="small">Cantidad: ${item.qty}</div>
+            <div class="small">Valor unit.: ${valor}</div>
+            <div style="color: var(--accent); font-weight: 600; margin-top: 0.5rem;">
+              ${valor * item.qty}
+            </div>
+          `;
+          
+          card.querySelector('.item-delete').onclick = (e) => {
+            e.stopPropagation();
+            if (!confirm('¿Eliminar este objeto?')) return;
+            items.splice(index, 1);
+            toast('Objeto eliminado del inventario');
+            mostrarInventarioMiembro(miembro);
+          };
+          
+          grid.appendChild(card);
+        });
+
+        document.getElementById('clear-inventory').onclick = () => {
+          if (!confirm('¿Vaciar todo el inventario de ' + miembro.nombre + '?')) return;
+          inventarios[miembro.id] = [];
+          toast('Inventario vaciado');
+          mostrarInventarioMiembro(miembro);
+        };
+      }
+
+      modal.classList.add('active');
+    }
+
+    // BUSCADOR INVENTARIOS
+    document.getElementById('buscador-inventario').addEventListener('input', (e) => {
+      const q = e.target.value.toLowerCase();
+      const grid = document.getElementById('grid-inventarios');
+      grid.innerHTML = '';
+
+      if (!q) {
+        grid.innerHTML = '<p class="sub">Escribe un nombre de usuario o objeto para buscar</p>';
+        return;
+      }
+
+      // Buscar por usuario
+      const miembroMatch = miembros.filter(m => m.nombre.toLowerCase().includes(q));
+      
+      // Buscar por objeto
+      const objetoMatch = catalogo.filter(c => c.nombre.toLowerCase().includes(q));
+      
+      if (miembroMatch.length > 0) {
+        miembroMatch.forEach(m => {
+          const items = inventarios[m.id] || [];
+          const card = document.createElement('div');
+          card.className = 'inventario-card';
+          card.style.cursor = 'pointer';
+          card.innerHTML = `
+            <h4>${m.nombre}</h4>
+            <p class="small">Rango: ${m.rangoId || '—'}</p>
+            <p class="small" style="margin-top: 0.5rem;">Objetos: ${items.length}</p>
+          `;
+          card.onclick = () => mostrarInventarioMiembro(m);
+          grid.appendChild(card);
+        });
+      }
+
+      if (objetoMatch.length > 0) {
+        objetoMatch.forEach(obj => {
+          const poseedores = miembros.filter(m => {
+            const inv = inventarios[m.id] || [];
+            return inv.some(i => i.itemId === obj.id);
+          });
+
+          if (poseedores.length > 0) {
+            const card = document.createElement('div');
+            card.className = 'inventario-card';
+            card.innerHTML = `
+              <h4>📦 ${obj.nombre}</h4>
+              <p class="small">Este objeto lo tienen:</p>
+              <div style="margin-top: 0.75rem;">
+                ${poseedores.map(m => `<div class="small" style="margin-top: 0.25rem;">• ${m.nombre}</div>`).join('')}
+              </div>
+            `;
+            grid.appendChild(card);
+          }
+        });
+      }
+
+      if (grid.innerHTML === '') {
+        grid.innerHTML = '<p class="sub">No se encontraron resultados</p>';
+      }
+    });
+
+    // Mensaje inicial en inventarios
+    document.getElementById('grid-inventarios').innerHTML = 
+      '<p class="sub">Escribe un nombre de usuario o objeto para buscar</p>';
+  </script>
+</body>
+</html>
