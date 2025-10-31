@@ -7,7 +7,7 @@ import {
   signInWithEmailAndPassword,
   signOut,
   onAuthStateChanged,
-  // getIdToken // no necesitamos tokens en frontend ahora
+  getIdToken
 } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-auth.js";
 import {
   getFirestore,
@@ -25,6 +25,12 @@ import {
   orderBy,
   serverTimestamp
 } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-firestore.js";
+
+/* --------------------------
+   CONFIG: Worker URL
+   -------------------------- */
+// Pon aquí tu Worker URL (ya me diste esta):
+const WORKER_URL = "https://flat-scene-48ab.ggoldenhhands.workers.dev/";
 
 /* --------------------------
    Inicializar Firebase
@@ -220,7 +226,8 @@ document.getElementById('btn-add-item').addEventListener('click', () => addItemR
 
 /* --------------------------
    Submit formulario: guarda registries y actualiza inventories
-   NOTE: NO se llama a Cloud Function. El GitHub Action procesará 'registries'.
+   Ahora: envía el payload al Cloudflare Worker para que haga el embed y,
+   si el Worker responde OK, marca processed:true en Firestore.
    -------------------------- */
 document.getElementById('form-registro').addEventListener('submit', async (e) => {
   e.preventDefault();
@@ -238,7 +245,8 @@ document.getElementById('form-registro').addEventListener('submit', async (e) =>
     const id = r.querySelector('.sel-item').value;
     const qty = Number(r.querySelector('.qty-item').value) || 0;
     const item = catalogo.find(c => c.id === id) || {};
-    return { itemId: id, nombre: item.nombre || id, qty, valorBase: item.valorBase || 0 };
+    // Incluimos pct si existe en el item, y el valorBase para que el Worker pueda calcular.
+    return { itemId: id, nombre: item.nombre || id, qty, valorBase: item.valorBase || 0, pct: (typeof item.pct === 'number') ? item.pct : null };
   });
 
   try {
@@ -273,7 +281,49 @@ document.getElementById('form-registro').addEventListener('submit', async (e) =>
       }
     }
 
-    toast('Registro guardado. En pocos minutos se notificará en Discord.');
+    // 3) Enviar al Worker (instantáneo)
+    try {
+      const idToken = await getIdToken(auth.currentUser, /* forceRefresh */ true);
+      const payload = {
+        registryId: registryRef.id,
+        authorId: auth.currentUser.uid,
+        authorEmail: auth.currentUser.email,
+        memberId: member.id,
+        memberName: member.displayName || member.username || member.id,
+        actividad,
+        items
+      };
+
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 10000); // timeout 10s
+      const resp = await fetch(WORKER_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer ' + idToken
+        },
+        body: JSON.stringify(payload),
+        signal: controller.signal
+      });
+      clearTimeout(timeout);
+
+      if (!resp.ok) {
+        const text = await resp.text().catch(() => '');
+        console.error('Worker error:', resp.status, text);
+        toast('Worker error: ' + (resp.statusText || resp.status) + (text ? ' — ' + text : ''), 'error', 6000);
+        // dejamos processed:false para reintentar manualmente
+      } else {
+        // marcar processed:true en Firestore (ahora que Worker respondió OK)
+        await updateDoc(registryRef, { processed: true, processedAt: serverTimestamp() });
+        toast('Registro guardado y enviado a Discord (instantáneo).');
+      }
+    } catch (err) {
+      console.error('Error enviando al worker:', err);
+      toast('Error enviando a Discord: ' + (err.message || err), 'error', 6000);
+      // dejamos processed:false para reintento
+    }
+
+    // limpiar formulario
     contenedorItems.innerHTML = '';
     addItemRow();
     buscarMiembroInput.value = '';
@@ -371,6 +421,7 @@ buscarMiembroInput.addEventListener('input', () => {
       div.textContent = m.displayName || m.username;
       div.onclick = () => {
         buscarMiembroInput.value = m.displayName || m.username;
+        buscarMiembroInput.dataset.if = m.id;
         buscarMiembroInput.dataset.id = m.id;
         sugerenciasMiembro.classList.remove('active');
         sugerenciasMiembro.innerHTML = '';
@@ -492,7 +543,7 @@ document.getElementById('btn-crear-catalogo').addEventListener('click', async ()
   const nombre = document.getElementById('cat-nombre').value.trim();
   const valor = Number(document.getElementById('cat-valor').value) || 0;
   const pagable = document.getElementById('cat-pagable').checked;
-  const pctInput = document.getElementById('cat-pct').value.trim();
+  const pctInput = document.getElementById('cat-pct') ? document.getElementById('cat-pct').value.trim() : '';
   let pct = null;
   if (pctInput !== '') {
     const n = Number(pctInput);
@@ -505,7 +556,7 @@ document.getElementById('btn-crear-catalogo').addEventListener('click', async ()
   toast('Objeto agregado al catálogo');
   document.getElementById('cat-nombre').value = '';
   document.getElementById('cat-valor').value = '';
-  document.getElementById('cat-pct').value = '';
+  if (document.getElementById('cat-pct')) document.getElementById('cat-pct').value = '';
   document.getElementById('cat-pagable').checked = true;
 });
 
