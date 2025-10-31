@@ -1,0 +1,29 @@
+name: Process Firestore registries -> Discord
+on:
+  schedule:
+    - cron: '*/5 * * * *' # cada 5 minutos
+  workflow_dispatch: # permite correr manualmente desde GitHub UI
+
+jobs:
+  process-registries:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install deps
+        run: npm ci
+        working-directory: ./github-action
+
+      - name: Run registry processor
+        env:
+          GOOGLE_SERVICE_ACCOUNT: ${{ secrets.GOOGLE_SERVICE_ACCOUNT }}
+          FIREBASE_PROJECT_ID: 'inventario-lm' # cambia si tu projectId es otro
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+        run: node process_registries.js
+        working-directory: ./github-action
