@@ -1,107 +1,183 @@
-// process_registries.js
-// Ejecutar en GH Actions con GOOGLE_SERVICE_ACCOUNT env var y DISCORD_WEBHOOK env var.
+// github-action/process_registries.js
+import { Firestore } from '@google-cloud/firestore';
 
-const admin = require('firebase-admin');
-const fetch = require('node-fetch');
+const discordWebhook = process.env.DISCORD_WEBHOOK;
+const googleServiceAccount = process.env.GOOGLE_SERVICE_ACCOUNT;
 
-async function main(){
-  if (!process.env.GOOGLE_SERVICE_ACCOUNT) throw new Error('Env GOOGLE_SERVICE_ACCOUNT missing');
-  if (!process.env.DISCORD_WEBHOOK) throw new Error('Env DISCORD_WEBHOOK missing');
-  if (!process.env.FIREBASE_PROJECT_ID) throw new Error('Env FIREBASE_PROJECT_ID missing');
+if (!discordWebhook) {
+  console.error('FATAL: DISCORD_WEBHOOK not defined in env (secrets).');
+  process.exit(2);
+}
+if (!googleServiceAccount) {
+  console.error('FATAL: GOOGLE_SERVICE_ACCOUNT not defined in env (secrets).');
+  process.exit(2);
+}
 
-  // Parse service account JSON from secret
-  const sa = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT);
+// Parse service account JSON (lo guardaste en secrets)
+let sa;
+try {
+  sa = JSON.parse(googleServiceAccount);
+} catch (err) {
+  console.error('Error parsing GOOGLE_SERVICE_ACCOUNT JSON:', err);
+  process.exit(2);
+}
 
-  // Inicializar admin SDK
-  admin.initializeApp({
-    credential: admin.credential.cert(sa),
-    projectId: process.env.FIREBASE_PROJECT_ID
+// Init Firestore client using credentials from secret
+const projectId = sa.project_id || process.env.FIRESTORE_PROJECT;
+const firestore = new Firestore({
+  projectId,
+  credentials: {
+    client_email: sa.client_email,
+    private_key: sa.private_key
+  }
+});
+
+// Helper: small delay
+const wait = (ms) => new Promise(r => setTimeout(r, ms));
+
+async function sendDiscord(payload) {
+  // Use global fetch since runner usa Node >= 18
+  const res = await fetch(discordWebhook, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
   });
+  const text = await res.text();
+  return { ok: res.ok, status: res.status, body: text };
+}
 
-  const db = admin.firestore();
+function buildEmbedPayload(registry, computed) {
+  // computed: {items: [{nombre, qty, valorUnit, subtotal}], total}
+  const lines = computed.items.map(i => `• **${i.nombre}** — x${i.qty} — unit: ${i.valorUnit} — subtotal: ${i.subtotal}`);
+  const description = [
+    `**Miembro:** ${registry.memberName}`,
+    `**Actividad:** ${registry.actividad}`,
+    '',
+    ...lines,
+    '',
+    `**Total:** ${computed.total}`
+  ].join('\n');
 
-  // Buscar registries no procesados
-  const regsSnap = await db.collection('registries').where('processed', '==', false).limit(50).get();
-  if (regsSnap.empty) {
-    console.log('No registries to process.');
-    return;
+  return {
+    embeds: [
+      {
+        title: '📜 Nuevo registro de loot',
+        description,
+        color: 5814783,
+        footer: { text: `Autor: ${registry.authorEmail || registry.authorId}` },
+        timestamp: new Date().toISOString()
+      }
+    ]
+  };
+}
+
+async function computeRegistryTotals(registryDoc) {
+  const data = registryDoc.data();
+  const items = Array.isArray(data.items) ? data.items : [];
+  // Load items metadata in batch
+  const itemIds = Array.from(new Set(items.map(it => it.itemId).filter(Boolean)));
+  const itemMetaMap = {};
+  if (itemIds.length > 0) {
+    const refs = itemIds.map(id => firestore.doc(`items/${id}`));
+    const snaps = await Promise.all(refs.map(r => r.get()));
+    snaps.forEach(s => {
+      if (s.exists) itemMetaMap[s.id] = s.data();
+    });
   }
 
-  // Preload items & ranks & profiles for faster lookup
-  const itemsSnap = await db.collection('items').get();
-  const ranksSnap = await db.collection('ranks').get();
-  const profilesSnap = await db.collection('profiles').get();
-
-  const itemsMap = {};
-  itemsSnap.forEach(d => itemsMap[d.id] = d.data());
-
-  const ranksMap = {};
-  ranksSnap.forEach(d => ranksMap[d.id] = d.data());
-
-  const profilesMap = {};
-  profilesSnap.forEach(d => profilesMap[d.id] = d.data());
-
-  for (const doc of regsSnap.docs) {
-    const reg = doc.data();
-    try {
-      // calculamos total y preparamos campos para embed
-      let total = 0;
-      const lines = reg.items.map(it => {
-        const meta = itemsMap[it.itemId] || {};
-        const rank = ranksMap[ profilesMap[reg.memberId]?.rankId ] || {};
-        const pctRank = (profilesMap[reg.memberId]?.tiene500) ? (rank.pct500 || rank.pct || 0) : (rank.pct || 0);
-        const pctItem = (typeof meta.pct === 'number') ? meta.pct : null;
-        const effectivePct = (pctItem !== null) ? pctItem : pctRank || 1;
-        const valorUnit = Math.round( (meta.valorBase || it.valorBase || 0) * effectivePct );
-        const lineTotal = valorUnit * (it.qty || 1);
-        total += lineTotal;
-        return `• **${meta.nombre || it.nombre || it.itemId}** — x${it.qty || 1} — Unit: ${valorUnit} — Total: ${lineTotal}`;
-      });
-
-      // Compose embed payload (Discord webhook)
-      const embed = {
-        username: 'Inventario LM',
-        embeds: [
-          {
-            title: `Registro: ${reg.memberName || reg.memberId}`,
-            description: `Actividad: ${reg.actividad}\nAutor: ${reg.authorEmail || reg.authorId}`,
-            color: 0x00c2a8,
-            fields: [
-              { name: 'Items', value: lines.join('\n') || '—', inline: false },
-              { name: 'Total', value: `${total}`, inline: true }
-            ],
-            timestamp: (reg.createdAt && reg.createdAt.toDate) ? reg.createdAt.toDate().toISOString() : new Date().toISOString()
-          }
-        ]
-      };
-
-      // Send to Discord
-      const res = await fetch(process.env.DISCORD_WEBHOOK, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(embed)
-      });
-
-      if (!res.ok) {
-        const text = await res.text();
-        throw new Error('Discord error: ' + res.status + ' ' + text);
+  // Get rank pct if present in registry (we store only memberId/rank in profiles; but registry may not include rank)
+  // We'll try to read profile to find rank and tiene500
+  let pctRank = 1;
+  if (data.memberId) {
+    const profSnap = await firestore.doc(`profiles/${data.memberId}`).get();
+    if (profSnap.exists) {
+      const prof = profSnap.data();
+      const rankId = prof.rankId;
+      // try to get rank document:
+      if (rankId) {
+        const rankSnap = await firestore.doc(`ranks/${rankId}`).get();
+        if (rankSnap.exists) {
+          const rank = rankSnap.data();
+          pctRank = prof.tiene500 ? (rank.pct500 ?? rank.pct ?? 1) : (rank.pct ?? 1);
+        }
       }
-
-      // mark processed
-      await doc.ref.update({ processed: true, processedAt: admin.firestore.FieldValue.serverTimestamp() });
-      console.log('Processed registry', doc.id);
-    } catch (err) {
-      console.error('Error processing registry', doc.id, err);
-      // opcional: enviar mensaje a log channel o guardar error en el doc
-      await doc.ref.update({ processedError: String(err), processedAt: admin.firestore.FieldValue.serverTimestamp() });
     }
   }
 
-  // cierre
-  process.exit(0);
+  const computedItems = [];
+  let total = 0;
+  for (const it of items) {
+    const meta = itemMetaMap[it.itemId] || {};
+    const pctItem = (typeof meta.pct === 'number') ? meta.pct : null;
+    const effectivePct = (pctItem !== null) ? pctItem : pctRank;
+    const valorBase = Number(meta.valorBase || it.valorBase || 0);
+    const valorUnit = Math.round(valorBase * (effectivePct || 1));
+    const qty = Number(it.qty || 0);
+    const subtotal = valorUnit * qty;
+    computedItems.push({ nombre: meta.nombre || it.nombre || it.itemId, qty, valorUnit, subtotal, pctItem });
+    total += subtotal;
+  }
+
+  return { items: computedItems, total };
 }
 
-main().catch(e => {
-  console.error(e);
-  process.exit(1);
-});
+async function processOnce() {
+  const registriesRef = firestore.collection('registries');
+  // Query unprocessed registries
+  const q = registriesRef.where('processed', '==', false).orderBy('createdAt', 'asc').limit(20);
+  const snap = await q.get();
+  if (snap.empty) {
+    console.log('No registries to process.');
+    return;
+  }
+  console.log(`Found ${snap.size} registries to process.`);
+
+  for (const doc of snap.docs) {
+    const id = doc.id;
+    const data = doc.data();
+    console.log(`Processing registry ${id} (member: ${data.memberId || data.memberName})`);
+    try {
+      const computed = await computeRegistryTotals(doc);
+      const payload = buildEmbedPayload(data, computed);
+
+      // Send to Discord
+      const res = await sendDiscord(payload);
+      if (!res.ok) {
+        console.error('Discord send failed', res.status, res.body);
+        // don't mark as processed if Discord failed — optional: mark with error flag
+        await doc.ref.update({ processedError: true, processedErrorText: `Discord error ${res.status}` });
+        continue;
+      }
+
+      // Mark registry processed
+      await doc.ref.update({
+        processed: true,
+        processedAt: Firestore.Timestamp ? Firestore.Timestamp.now() : new Date(),
+        processedBy: 'github-action',
+        discordResponse: res.body
+      });
+
+      console.log(`Registry ${id} processed and marked.`);
+      // tiny delay to avoid rate limits
+      await wait(300);
+    } catch (err) {
+      console.error(`Error processing registry ${id}:`, err);
+      try {
+        await doc.ref.update({ processedError: true, processedErrorText: String(err) });
+      } catch (e) {
+        console.error('Also failed to set processedError:', e);
+      }
+    }
+  }
+}
+
+(async () => {
+  try {
+    console.log('Starting process_registries...');
+    await processOnce();
+    console.log('Done.');
+  } catch (err) {
+    console.error('Fatal error:', err);
+    process.exit(1);
+  }
+})();
