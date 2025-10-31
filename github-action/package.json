@@ -1,0 +1,9 @@
+{
+  "name": "process-registries-action",
+  "version": "1.0.0",
+  "license": "MIT",
+  "dependencies": {
+    "firebase-admin": "^12.7.0",
+    "node-fetch": "^2.6.7"
+  }
+}
