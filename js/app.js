@@ -467,12 +467,21 @@ document.getElementById('btn-crear-catalogo').addEventListener('click', async ()
   const nombre = document.getElementById('cat-nombre').value.trim();
   const valor = Number(document.getElementById('cat-valor').value) || 0;
   const pagable = document.getElementById('cat-pagable').checked;
-  if (!nombre || valor<=0) return toast('Nombre y valor válidos requeridos','error');
-  const id = nombre.toLowerCase().replace(/\s+/g,'-').replace(/[^a-z0-9-_]/g,'');
-  await setDoc(doc(db,'items',id), { nombre, valorBase: valor, pagable });
+  const pctInput = document.getElementById('cat-pct').value.trim();
+  let pct = null;
+  if (pctInput !== '') {
+    const n = Number(pctInput);
+    if (isNaN(n) || n < 0 || n > 100) return toast('Porcentaje inválido (0-100)', 'error');
+    pct = n / 100; // almacenamos 0.8 para 80%
+  }
+  if (!nombre || valor <= 0) return toast('Nombre y valor válidos requeridos', 'error');
+  const id = nombre.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-_]/g, '');
+  await setDoc(doc(db, 'items', id), { nombre, valorBase: valor, pagable, pct }); // pct puede ser null
   toast('Objeto agregado al catálogo');
-  document.getElementById('cat-nombre').value='';
-  document.getElementById('cat-valor').value='';
+  document.getElementById('cat-nombre').value = '';
+  document.getElementById('cat-valor').value = '';
+  document.getElementById('cat-pct').value = '';
+  document.getElementById('cat-pagable').checked = true;
 });
 
 /* --------------------------
