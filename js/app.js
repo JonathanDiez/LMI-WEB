@@ -29,7 +29,7 @@ import {
 /* --------------------------
    CONFIG: Worker URL
    -------------------------- */
-// Pon aquí tu Worker URL (ya me diste esta):
+// Pon aquí tu Worker URL
 const WORKER_URL = "https://flat-scene-48ab.ggoldenhhands.workers.dev/";
 
 /* --------------------------
@@ -78,6 +78,26 @@ let catalogo = [];
 let membersLocal = [];
 let inventoriesLocal = {};
 
+// --------------------------
+// Unsubscribe helpers (evitar permission-denied al hacer logout)
+// --------------------------
+let unsubscribeFns = [];
+
+function addUnsub(fn) {
+  if (typeof fn === 'function') unsubscribeFns.push(fn);
+}
+
+function unsubscribeAll() {
+  try {
+    unsubscribeFns.forEach(f => {
+      try { f(); } catch (e) { /* ignore */ }
+    });
+  } finally {
+    unsubscribeFns = [];
+    console.log('[DEBUG] Unsubscribed all realtime listeners');
+  }
+}
+
 /* --------------------------
    NAV (simple)
    -------------------------- */
@@ -106,13 +126,30 @@ btnEntrar.addEventListener('click', async () => {
     toast('Error login: ' + (err.message || err), 'error');
   }
 });
+
 btnLogout.addEventListener('click', async () => {
-  await signOut(auth);
-  toast('Sesión cerrada');
+  try {
+    unsubscribeAll();
+    // breve espera para que se cierren conexiones (opcional)
+    await new Promise(r => setTimeout(r, 50));
+    await signOut(auth);
+    toast('Sesión cerrada');
+  } catch (err) {
+    console.error('Error al cerrar sesión:', err);
+    toast('Error cerrando sesión: ' + (err.message || err), 'error');
+  }
 });
+
 btnLogoutSidebar.addEventListener('click', async () => {
-  await signOut(auth);
-  toast('Sesión cerrada');
+  try {
+    unsubscribeAll();
+    await new Promise(r => setTimeout(r, 50));
+    await signOut(auth);
+    toast('Sesión cerrada');
+  } catch (err) {
+    console.error('Error al cerrar sesión (sidebar):', err);
+    toast('Error cerrando sesión: ' + (err.message || err), 'error');
+  }
 });
 
 /* --------------------------
@@ -120,21 +157,29 @@ btnLogoutSidebar.addEventListener('click', async () => {
    -------------------------- */
 onAuthStateChanged(auth, async (user) => {
   if (user) {
-    // verificar admins/{uid}
-    const adminDoc = await getDoc(doc(db,'admins', user.uid));
-    const isAdmin = adminDoc.exists();
-    if (!isAdmin) {
-      toast('No eres admin. Acceso restringido', 'error');
-      await signOut(auth);
-      return;
+    try {
+      // verificar admins/{uid}
+      const adminDoc = await getDoc(doc(db,'admins', user.uid));
+      const isAdmin = adminDoc.exists();
+      if (!isAdmin) {
+        toast('No eres admin. Acceso restringido', 'error');
+        unsubscribeAll();
+        await signOut(auth);
+        return;
+      }
+      seccionLogin.style.display = 'none';
+      seccionDashboard.style.display = 'flex';
+      userBadge.style.display = 'flex';
+      userNombreEl.textContent = user.email;
+      await cargarDatosIniciales();
+      watchCollectionsRealtime();
+    } catch (err) {
+      console.error('Error en onAuthStateChanged:', err);
+      toast('Error comprobando usuario: ' + (err.message || err), 'error');
     }
-    seccionLogin.style.display = 'none';
-    seccionDashboard.style.display = 'flex';
-    userBadge.style.display = 'flex';
-    userNombreEl.textContent = user.email;
-    await cargarDatosIniciales();
-    watchCollectionsRealtime();
   } else {
+    // al cerrar sesión, asegurarnos de desuscribir listeners
+    unsubscribeAll();
     seccionLogin.style.display = 'block';
     seccionDashboard.style.display = 'none';
     userBadge.style.display = 'none';
@@ -176,29 +221,83 @@ async function cargarDatosIniciales() {
    Realtime watchers
    -------------------------- */
 function watchCollectionsRealtime(){
-  onSnapshot(collection(db,'items'), (snap) => {
-    catalogo = [];
-    snap.forEach(d => catalogo.push({ id: d.id, ...d.data() }));
-    renderCatalogo();
-  });
-  onSnapshot(collection(db,'ranks'), (snap) => {
-    ranks = {};
-    snap.forEach(d => ranks[d.id] = d.data());
-    renderSelectRangos();
-  });
-  onSnapshot(collection(db,'profiles'), (snap) => {
-    membersLocal = [];
-    snap.forEach(d => membersLocal.push({ id: d.id, ...d.data() }));
-    renderMiembros();
-  });
-  onSnapshot(collection(db,'inventories'), (snap) => {
-    inventoriesLocal = {};
-    snap.forEach(d => {
-      const data = d.data();
-      if(!inventoriesLocal[data.userId]) inventoriesLocal[data.userId] = [];
-      inventoriesLocal[data.userId].push({ id: d.id, ...data });
-    });
-  });
+  // limpiar listeners previos
+  unsubscribeAll();
+
+  // items
+  const unsubItems = onSnapshot(collection(db,'items'),
+    (snap) => {
+      catalogo = [];
+      snap.forEach(d => catalogo.push({ id: d.id, ...d.data() }));
+      renderCatalogo();
+    },
+    (err) => {
+      if (err?.code === 'permission-denied' && !auth.currentUser) {
+        console.warn('[realtime] items onSnapshot ignored permission-denied after signOut');
+        return;
+      }
+      console.error('[realtime] items onSnapshot error:', err);
+      toast('Error realtime (items): ' + (err.code || err.message || err), 'error', 6000);
+    }
+  );
+  addUnsub(unsubItems);
+
+  // ranks
+  const unsubRanks = onSnapshot(collection(db,'ranks'),
+    (snap) => {
+      ranks = {};
+      snap.forEach(d => ranks[d.id] = d.data());
+      renderSelectRangos();
+    },
+    (err) => {
+      if (err?.code === 'permission-denied' && !auth.currentUser) {
+        console.warn('[realtime] ranks onSnapshot ignored permission-denied after signOut');
+        return;
+      }
+      console.error('[realtime] ranks onSnapshot error:', err);
+      toast('Error realtime (ranks): ' + (err.code || err.message || err), 'error', 6000);
+    }
+  );
+  addUnsub(unsubRanks);
+
+  // profiles
+  const unsubProfiles = onSnapshot(collection(db,'profiles'),
+    (snap) => {
+      membersLocal = [];
+      snap.forEach(d => membersLocal.push({ id: d.id, ...d.data() }));
+      renderMiembros();
+    },
+    (err) => {
+      if (err?.code === 'permission-denied' && !auth.currentUser) {
+        console.warn('[realtime] profiles onSnapshot ignored permission-denied after signOut');
+        return;
+      }
+      console.error('[realtime] profiles onSnapshot error:', err);
+      toast('Error realtime (profiles): ' + (err.code || err.message || err), 'error', 6000);
+    }
+  );
+  addUnsub(unsubProfiles);
+
+  // inventories
+  const unsubInventories = onSnapshot(collection(db,'inventories'),
+    (snap) => {
+      inventoriesLocal = {};
+      snap.forEach(d => {
+        const data = d.data();
+        if (!inventoriesLocal[data.userId]) inventoriesLocal[data.userId] = [];
+        inventoriesLocal[data.userId].push({ id: d.id, ...data });
+      });
+    },
+    (err) => {
+      if (err?.code === 'permission-denied' && !auth.currentUser) {
+        console.warn('[realtime] inventories onSnapshot ignored permission-denied after signOut');
+        return;
+      }
+      console.error('[realtime] inventories onSnapshot error:', err);
+      toast('Error realtime (inventories): ' + (err.code || err.message || err), 'error', 6000);
+    }
+  );
+  addUnsub(unsubInventories);
 }
 
 /* --------------------------
@@ -284,14 +383,18 @@ document.getElementById('form-registro').addEventListener('submit', async (e) =>
     // 3) Enviar al Worker (instantáneo)
     try {
       const idToken = await getIdToken(auth.currentUser, /* forceRefresh */ true);
-      const payload = {
+
+      // Worker espera { registryId, payload }
+      const bodyToSend = {
         registryId: registryRef.id,
-        authorId: auth.currentUser.uid,
-        authorEmail: auth.currentUser.email,
-        memberId: member.id,
-        memberName: member.displayName || member.username || member.id,
-        actividad,
-        items
+        payload: {
+          authorId: auth.currentUser.uid,
+          authorEmail: auth.currentUser.email,
+          memberId: member.id,
+          memberName: member.displayName || member.username || member.id,
+          actividad,
+          items
+        }
       };
 
       const controller = new AbortController();
@@ -302,7 +405,7 @@ document.getElementById('form-registro').addEventListener('submit', async (e) =>
           'Content-Type': 'application/json',
           'Authorization': 'Bearer ' + idToken
         },
-        body: JSON.stringify(payload),
+        body: JSON.stringify(bodyToSend),
         signal: controller.signal
       });
       clearTimeout(timeout);
@@ -365,8 +468,13 @@ function renderCatalogo() {
 
       el.querySelector('.btn-delete').onclick = async () => {
         if (!confirm('¿Borrar objeto del catálogo?')) return;
-        await deleteDoc(doc(db, 'items', c.id));
-        toast('Objeto eliminado');
+        try {
+          await deleteDoc(doc(db, 'items', c.id));
+          toast('Objeto eliminado');
+        } catch (err) {
+          console.error('Error borrando item:', err);
+          toast('Error borrando item: ' + (err.message || err), 'error');
+        }
       };
       lista.appendChild(el);
     });
@@ -396,8 +504,13 @@ function renderMiembros() {
     el.querySelector('.btn-delete').onclick = async (e) => {
       e.stopPropagation();
       if (!confirm('¿Eliminar miembro ' + (m.displayName||m.username) + '?')) return;
-      await deleteDoc(doc(db,'profiles',m.id));
-      toast('Miembro eliminado');
+      try {
+        await deleteDoc(doc(db,'profiles',m.id));
+        toast('Miembro eliminado');
+      } catch (err) {
+        console.error('Error eliminando miembro:', err);
+        toast('Error eliminando miembro: ' + (err.message || err), 'error');
+      }
     };
     grid.appendChild(el);
   });
@@ -421,7 +534,6 @@ buscarMiembroInput.addEventListener('input', () => {
       div.textContent = m.displayName || m.username;
       div.onclick = () => {
         buscarMiembroInput.value = m.displayName || m.username;
-        buscarMiembroInput.dataset.if = m.id;
         buscarMiembroInput.dataset.id = m.id;
         sugerenciasMiembro.classList.remove('active');
         sugerenciasMiembro.innerHTML = '';
@@ -500,8 +612,13 @@ async function mostrarInventarioMiembro(miembro) {
       btn.onclick = async (e) => {
         const id = btn.dataset.id;
         if (!confirm('¿Eliminar este objeto?')) return;
-        await deleteDoc(doc(db, 'inventories', id));
-        toast('Objeto eliminado del inventario');
+        try {
+          await deleteDoc(doc(db, 'inventories', id));
+          toast('Objeto eliminado del inventario');
+        } catch (err) {
+          console.error('Error eliminando inventario item:', err);
+          toast('Error eliminando item: ' + (err.message || err), 'error');
+        }
         // recursivamente recalc/mostrar
         mostrarInventarioMiembro(miembro);
       };
@@ -512,9 +629,14 @@ async function mostrarInventarioMiembro(miembro) {
     if (clearBtn) {
       clearBtn.onclick = async () => {
         if (!confirm('¿Vaciar todo el inventario de ' + (miembro.displayName || miembro.username) + '?')) return;
-        const snapClear = await getDocs(query(collection(db, 'inventories'), where('userId', '==', miembro.id)));
-        for (const d of snapClear.docs) await deleteDoc(d.ref);
-        toast('Inventario vaciado');
+        try {
+          const snapClear = await getDocs(query(collection(db, 'inventories'), where('userId', '==', miembro.id)));
+          for (const d of snapClear.docs) await deleteDoc(d.ref);
+          toast('Inventario vaciado');
+        } catch (err) {
+          console.error('Error vaciando inventario:', err);
+          toast('Error vaciando inventario: ' + (err.message || err), 'error');
+        }
         mostrarInventarioMiembro(miembro);
       };
     }
@@ -534,9 +656,14 @@ document.getElementById('btn-crear-miembro').addEventListener('click', async () 
   const id = nombre.toLowerCase().replace(/\s+/g,'-').replace(/[^a-z0-9-_]/g,'');
   const rango = document.getElementById('mi-rango').value;
   const tiene500 = document.getElementById('mi-500').checked;
-  await setDoc(doc(db,'profiles', id), { displayName: nombre, username: id, rankId: rango, tiene500 });
-  toast('Miembro creado: ' + nombre);
-  document.getElementById('mi-nombre').value='';
+  try {
+    await setDoc(doc(db,'profiles', id), { displayName: nombre, username: id, rankId: rango, tiene500 });
+    toast('Miembro creado: ' + nombre);
+    document.getElementById('mi-nombre').value='';
+  } catch (err) {
+    console.error('Error creando miembro:', err);
+    toast('Error creando miembro: ' + (err.message || err), 'error');
+  }
 });
 
 document.getElementById('btn-crear-catalogo').addEventListener('click', async () => {
@@ -552,12 +679,17 @@ document.getElementById('btn-crear-catalogo').addEventListener('click', async ()
   }
   if (!nombre || valor <= 0) return toast('Nombre y valor válidos requeridos', 'error');
   const id = nombre.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-_]/g, '');
-  await setDoc(doc(db, 'items', id), { nombre, valorBase: valor, pagable, pct }); // pct puede ser null
-  toast('Objeto agregado al catálogo');
-  document.getElementById('cat-nombre').value = '';
-  document.getElementById('cat-valor').value = '';
-  if (document.getElementById('cat-pct')) document.getElementById('cat-pct').value = '';
-  document.getElementById('cat-pagable').checked = true;
+  try {
+    await setDoc(doc(db, 'items', id), { nombre, valorBase: valor, pagable, pct }); // pct puede ser null
+    toast('Objeto agregado al catálogo');
+    document.getElementById('cat-nombre').value = '';
+    document.getElementById('cat-valor').value = '';
+    if (document.getElementById('cat-pct')) document.getElementById('cat-pct').value = '';
+    document.getElementById('cat-pagable').checked = true;
+  } catch (err) {
+    console.error('Error creando item:', err);
+    toast('Error creando item: ' + (err.message || err), 'error');
+  }
 });
 
 /* --------------------------
@@ -653,15 +785,20 @@ window.seedDemo = async function seedDemo() {
     { id: 'm4a1', nombre: 'M4A1', valorBase: 18000, pagable: true },
     { id: 'usp', nombre: 'USP', valorBase: 5000, pagable: true }
   ];
-  for (const k of Object.keys(demoRanks)) {
-    await setDoc(doc(db,'ranks',k), demoRanks[k]);
+  try {
+    for (const k of Object.keys(demoRanks)) {
+      await setDoc(doc(db,'ranks',k), demoRanks[k]);
+    }
+    for (const it of demoItems) {
+      await setDoc(doc(db,'items',it.id), { nombre: it.nombre, valorBase: it.valorBase, pagable: it.pagable });
+    }
+    await setDoc(doc(db,'profiles','juan-perez'), { displayName: 'Juan Pérez', username: 'juan-perez', rankId: 'Soldado', tiene500: true });
+    await setDoc(doc(db,'profiles','maria-lopez'), { displayName: 'María López', username: 'maria-lopez', rankId: 'Capo', tiene500: false });
+    toast('Datos demo creados. Recarga la página si no ves los cambios.');
+  } catch (err) {
+    console.error('Error creando seed demo:', err);
+    toast('Error seed demo: ' + (err.message || err), 'error');
   }
-  for (const it of demoItems) {
-    await setDoc(doc(db,'items',it.id), { nombre: it.nombre, valorBase: it.valorBase, pagable: it.pagable });
-  }
-  await setDoc(doc(db,'profiles','juan-perez'), { displayName: 'Juan Pérez', username: 'juan-perez', rankId: 'Soldado', tiene500: true });
-  await setDoc(doc(db,'profiles','maria-lopez'), { displayName: 'María López', username: 'maria-lopez', rankId: 'Capo', tiene500: false });
-  toast('Datos demo creados. Recarga la página si no ves los cambios.');
 };
 
 /* --------------------------
