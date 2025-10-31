@@ -1,0 +1,30 @@
+name: Process Firestore registries
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '*/5 * * * *'   # cada 5 minutos
+
+jobs:
+  process-registries:
+    runs-on: ubuntu-latest
+    env:
+      GOOGLE_SERVICE_ACCOUNT: ${{ secrets.GOOGLE_SERVICE_ACCOUNT }}
+      DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+      FIRESTORE_PROJECT: inventario-lm    # reemplaza si tu projectId es distinto
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Use Node.js 18
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Install dependencies
+        working-directory: github-action
+        run: npm ci
+
+      - name: Run processor
+        working-directory: github-action
+        run: node process_registries.js
