@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Inventario LM — Panel</title>
+  <title>Inventario LM</title>
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
@@ -12,7 +12,7 @@
     <header class="cabecera">
       <div class="cab-izq">
         <h1>🎯 Inventario LM</h1>
-        <p class="sub">Sistema de gestión de loot, miembros y pagos</p>
+        <p class="sub">Sistema de gestión de LOOTs y Notficaciones</p>
       </div>
       <div class="cab-der">
         <div id="user-badge" class="user-badge" style="display:none;">
@@ -215,7 +215,12 @@
                   <label class="input-label">Valor base ($)</label>
                   <input id="cat-valor" type="number" placeholder="15000" />
                 </div>
-                
+
+                <div class="input-group">
+                  <label class="input-label">Porcentaje específico del objeto (%) — opcional</label>
+                  <input id="cat-pct" type="number" min="0" max="100" placeholder="Ej: 80 (dejar vacío para usar pct del rango)" />
+                </div>
+
                 <div class="checkbox-label">
                   <input id="cat-pagable" type="checkbox" checked />
                   <span>Objeto pagable</span>
@@ -268,4 +273,5 @@
   <script type="module" src="./js/app.js"></script>
 </body>
 </html>
+
 
