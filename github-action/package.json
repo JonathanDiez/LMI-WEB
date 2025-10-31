@@ -1,9 +1,12 @@
 {
-  "name": "process-registries-action",
+  "name": "process-registries",
   "version": "1.0.0",
-  "license": "MIT",
+  "main": "process_registries.js",
+  "type": "module",
   "dependencies": {
-    "firebase-admin": "^12.7.0",
-    "node-fetch": "^2.6.7"
+    "@google-cloud/firestore": "^6.5.0"
+  },
+  "engines": {
+    "node": ">=18"
   }
 }
