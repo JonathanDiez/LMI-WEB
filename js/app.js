@@ -296,21 +296,26 @@ function renderSelectRangos() {
 
 function renderCatalogo() {
   const lista = document.getElementById('lista-catalogo');
-  if(lista) {
+  if (lista) {
     lista.innerHTML = '';
     catalogo.forEach(c => {
       const el = document.createElement('div');
       el.className = 'catalogo-item';
+
+      const pctLabel = (typeof c.pct === 'number') ? ` • Item pct: ${Math.round(c.pct * 100)}%` : '';
+      const pagableLabel = (c.pagable === false) ? '• No pagable' : '';
+
       el.innerHTML = `
         <div>
           <strong>${escapeHtml(c.nombre)}</strong>
-          <div class="small">Valor: ${Number(c.valorBase||0)} ${c.pagable === false ? '• No pagable' : ''}</div>
+          <div class="small">Valor: ${Number(c.valorBase || 0)} ${pagableLabel}${pctLabel}</div>
         </div>
         <button class="btn-delete" data-id="${c.id}">🗑️</button>
       `;
+
       el.querySelector('.btn-delete').onclick = async () => {
         if (!confirm('¿Borrar objeto del catálogo?')) return;
-        await deleteDoc(doc(db,'items',c.id));
+        await deleteDoc(doc(db, 'items', c.id));
         toast('Objeto eliminado');
       };
       lista.appendChild(el);
@@ -393,14 +398,18 @@ modalClose.onclick = () => modal.classList.remove('active');
 modal.onclick = (e) => { if (e.target===modal) modal.classList.remove('active'); };
 
 async function mostrarInventarioMiembro(miembro) {
-  const q = query(collection(db,'inventories'), where('userId','==',miembro.id));
+  const q = query(collection(db, 'inventories'), where('userId', '==', miembro.id));
   const snap = await getDocs(q);
   const items = [];
   snap.forEach(d => items.push({ id: d.id, ...d.data() }));
+
+  // pctRank es el porcentaje que corresponde al rango (ej. 0.65)
   const rango = ranks[miembro.rankId] || {};
-  const pct = miembro.tiene500 ? (rango.pct500 || rango.pct || 0) : (rango.pct || 0);
+  const pctRank = miembro.tiene500 ? (rango.pct500 || rango.pct || 0) : (rango.pct || 0);
+
   let totalValor = 0;
   const body = document.getElementById('modal-body');
+
   if (items.length === 0) {
     body.innerHTML = '<p class="sub">Este miembro no tiene objetos en su inventario</p>';
   } else {
@@ -408,44 +417,60 @@ async function mostrarInventarioMiembro(miembro) {
       <h4>Objetos en inventario (${items.length})</h4>
       <button class="btn-delete" id="clear-inventory">Vaciar inventario</button>
     </div><div class="inventario-items">`;
+
     for (const it of items) {
       const itemMeta = catalogo.find(ci => ci.id === it.itemId) || {};
-      const valorUnit = Math.round((itemMeta.valorBase || 0) * (pct || 1));
+
+      // pctItem si existe en el item, tiene prioridad
+      const pctItem = (itemMeta && (typeof itemMeta.pct === 'number')) ? itemMeta.pct : null;
+      const effectivePct = (pctItem !== null) ? pctItem : pctRank;
+      // si effectivePct es 0/undefined, usar 1 para no dejar valor a 0 por defecto
+      const valorUnit = Math.round((itemMeta.valorBase || 0) * (effectivePct || 1));
+
       totalValor += valorUnit * (it.qty || 0);
+
       html += `<div class="item-card">
         <button class="btn-delete item-delete" data-id="${it.id}">🗑️</button>
         <div class="item-image">📦</div>
         <strong>${escapeHtml(itemMeta.nombre || it.itemId)}</strong>
         <div class="small">Cantidad: ${it.qty}</div>
-        <div class="small">Valor unit.: ${valorUnit}</div>
+        <div class="small">Valor unit.: ${valorUnit}${ (pctItem !== null) ? ` • pct item: ${Math.round(pctItem*100)}%` : ` • pct rango: ${Math.round((pctRank||0)*100)}%` }</div>
         <div style="color: var(--accent); font-weight: 600; margin-top: 0.5rem;">
           ${valorUnit * it.qty}
         </div>
       </div>`;
     }
+
     html += `</div>`;
     body.innerHTML = html;
 
+    // Handlers de borrado por item (recalcula mostrando de nuevo)
     body.querySelectorAll('.item-delete').forEach(btn => {
       btn.onclick = async (e) => {
         const id = btn.dataset.id;
         if (!confirm('¿Eliminar este objeto?')) return;
-        await deleteDoc(doc(db,'inventories', id));
+        await deleteDoc(doc(db, 'inventories', id));
         toast('Objeto eliminado del inventario');
+        // recursivamente recalc/mostrar
         mostrarInventarioMiembro(miembro);
       };
     });
-    document.getElementById('clear-inventory').onclick = async () => {
-      if (!confirm('¿Vaciar todo el inventario de ' + (miembro.displayName||miembro.username) + '?')) return;
-      const snapClear = await getDocs(query(collection(db,'inventories'), where('userId','==',miembro.id)));
-      for (const d of snapClear.docs) await deleteDoc(d.ref);
-      toast('Inventario vaciado');
-      mostrarInventarioMiembro(miembro);
-    };
+
+    // Vaciar inventario
+    const clearBtn = document.getElementById('clear-inventory');
+    if (clearBtn) {
+      clearBtn.onclick = async () => {
+        if (!confirm('¿Vaciar todo el inventario de ' + (miembro.displayName || miembro.username) + '?')) return;
+        const snapClear = await getDocs(query(collection(db, 'inventories'), where('userId', '==', miembro.id)));
+        for (const d of snapClear.docs) await deleteDoc(d.ref);
+        toast('Inventario vaciado');
+        mostrarInventarioMiembro(miembro);
+      };
+    }
   }
 
   document.getElementById('modal-titulo').textContent = miembro.displayName || miembro.username || miembro.id;
-  document.getElementById('modal-subtitulo').innerHTML = `Rango: ${miembro.rankId || '—'} • Porcentaje: ${Math.round((pct||0)*100)}% • <strong>Total: ${Math.round(totalValor)}</strong>`;
+  document.getElementById('modal-subtitulo').innerHTML = `Rango: ${miembro.rankId || '—'} • Porcentaje rango: ${Math.round((pctRank || 0) * 100)}% • <strong>Total: ${Math.round(totalValor)}</strong>`;
   modal.classList.add('active');
 }
 
