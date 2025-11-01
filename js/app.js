@@ -39,6 +39,9 @@ const app = initializeApp(FIREBASE_CONFIG);
 const auth = getAuth(app);
 const db = getFirestore(app);
 
+window.auth = auth;
+window.db = db;
+
 /* --------------------------
    ELEMENTOS UI
    -------------------------- */
