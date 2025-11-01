@@ -39,10 +39,12 @@ const app = initializeApp(FIREBASE_CONFIG);
 const auth = getAuth(app);
 const db = getFirestore(app);
 
-/* Exponer cosas útiles para usar desde la consola (temporal) */
+// Exponer helpers útiles temporalmente para la consola (BORRAR en producción)
 window.auth = auth;
 window.db = db;
 window.serverTimestamp = serverTimestamp;
+
+// Exponer funciones Firestore para poder usarlas desde DevTools
 window.doc = doc;
 window.getDoc = getDoc;
 window.setDoc = setDoc;
@@ -50,10 +52,9 @@ window.addDoc = addDoc;
 window.updateDoc = updateDoc;
 window.deleteDoc = deleteDoc;
 window.getDocs = getDocs;
+window.collection = collection;
 window.query = query;
 window.where = where;
-window.collection = collection;
-console.log('[DEVTOOLS] window.auth/window.db y helpers expuestos');
 
 /* --------------------------
    ELEMENTOS UI
