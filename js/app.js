@@ -27,9 +27,9 @@ import {
 } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-firestore.js";
 
 /* --------------------------
-   CONFIG: Worker URL
+   CONFIG
+   Pon aquí tu Worker URL
    -------------------------- */
-// Pon aquí tu Worker URL
 const WORKER_URL = "https://flat-scene-48ab.ggoldenhhands.workers.dev/";
 
 /* --------------------------
@@ -39,9 +39,21 @@ const app = initializeApp(FIREBASE_CONFIG);
 const auth = getAuth(app);
 const db = getFirestore(app);
 
+/* Exponer cosas útiles para usar desde la consola (temporal) */
 window.auth = auth;
 window.db = db;
 window.serverTimestamp = serverTimestamp;
+window.doc = doc;
+window.getDoc = getDoc;
+window.setDoc = setDoc;
+window.addDoc = addDoc;
+window.updateDoc = updateDoc;
+window.deleteDoc = deleteDoc;
+window.getDocs = getDocs;
+window.query = query;
+window.where = where;
+window.collection = collection;
+console.log('[DEVTOOLS] window.auth/window.db y helpers expuestos');
 
 /* --------------------------
    ELEMENTOS UI
@@ -63,14 +75,14 @@ const sugerenciasMiembro = document.getElementById('sugerencias-miembro');
 const gridInventariosEl = document.getElementById('grid-inventarios');
 
 /* --------------------------
-   Toast
+   TOAST (pequeño)
    -------------------------- */
 function toast(msg, type='info', timeout=3000) {
   const el = document.createElement('div');
-  el.className = 'toast' + (type==='error'?' error':'');
+  el.className = 'toast' + (type === 'error' ? ' error' : '');
   el.textContent = msg;
   document.getElementById('toasts').appendChild(el);
-  setTimeout(() => el.style.opacity = '0', timeout-400);
+  setTimeout(() => el.style.opacity = '0', timeout - 400);
   setTimeout(() => el.remove(), timeout);
 }
 
@@ -83,7 +95,7 @@ let membersLocal = [];
 let inventoriesLocal = {};
 
 // --------------------------
-// Unsubscribe helpers (evitar permission-denied al hacer logout)
+// Unsubscribe helpers para realtime
 // --------------------------
 let unsubscribeFns = [];
 let isWatching = false;
@@ -105,7 +117,7 @@ function unsubscribeAll() {
 }
 
 /* --------------------------
-   NAV (simple)
+   NAV sencillo
    -------------------------- */
 document.querySelectorAll('.nav-btn').forEach(btn => {
   btn.addEventListener('click', () => {
@@ -136,7 +148,6 @@ btnEntrar.addEventListener('click', async () => {
 btnLogout.addEventListener('click', async () => {
   try {
     unsubscribeAll();
-    // aumentar slightly el delay para evitar race conditions (50ms -> 200ms)
     await new Promise(r => setTimeout(r, 200));
     await signOut(auth);
     toast('Sesión cerrada');
@@ -159,13 +170,12 @@ btnLogoutSidebar.addEventListener('click', async () => {
 });
 
 /* --------------------------
-   Auth state
+   onAuthStateChanged
    -------------------------- */
 onAuthStateChanged(auth, async (user) => {
   if (user) {
     try {
-      // verificar admins/{uid}
-      const adminDoc = await getDoc(doc(db,'admins', user.uid));
+      const adminDoc = await getDoc(doc(db, 'admins', user.uid));
       const isAdmin = adminDoc.exists();
       if (!isAdmin) {
         toast('No eres admin. Acceso restringido', 'error');
@@ -184,7 +194,6 @@ onAuthStateChanged(auth, async (user) => {
       toast('Error comprobando usuario: ' + (err.message || err), 'error');
     }
   } else {
-    // al cerrar sesión, asegurarnos de desuscribir listeners
     unsubscribeAll();
     seccionLogin.style.display = 'block';
     seccionDashboard.style.display = 'none';
@@ -193,28 +202,23 @@ onAuthStateChanged(auth, async (user) => {
 });
 
 /* --------------------------
-   Cargar datos iniciales (una vez)
+   CARGAR DATOS INICIALES (once)
    -------------------------- */
 async function cargarDatosIniciales() {
-  // Ranks
-  const ranksSnap = await getDocs(collection(db,'ranks'));
+  const ranksSnap = await getDocs(collection(db, 'ranks'));
   ranks = {};
   ranksSnap.forEach(d => ranks[d.id] = d.data());
 
-  // Items (catalogo)
-  const itemsSnap = await getDocs(collection(db,'items'));
+  const itemsSnap = await getDocs(collection(db, 'items'));
   catalogo = [];
   itemsSnap.forEach(d => catalogo.push({ id: d.id, ...d.data() }));
 
-  // Profiles (miembros)
-  const profilesSnap = await getDocs(collection(db,'profiles'));
+  const profilesSnap = await getDocs(collection(db, 'profiles'));
   membersLocal = [];
   profilesSnap.forEach(d => membersLocal.push({ id: d.id, ...d.data() }));
 
-  // Inventories (lazy: se llenará por realtime)
   inventoriesLocal = {};
 
-  // render
   renderSelectRangos();
   renderCatalogo();
   renderMiembros();
@@ -226,35 +230,29 @@ async function cargarDatosIniciales() {
 /* --------------------------
    Realtime watchers
    -------------------------- */
-function watchCollectionsRealtime(){
-  // Si ya estamos escuchando, no hacer nada
+function watchCollectionsRealtime() {
   if (isWatching) {
-    console.log('[DEBUG] watchCollectionsRealtime: ya está activo, skip');
+    console.log('[DEBUG] watchCollectionsRealtime: ya activo');
     return;
   }
-  // Solo arrancar si hay usuario autenticado
   if (!auth.currentUser) {
     console.warn('[DEBUG] watchCollectionsRealtime: no hay user, no iniciar listeners');
     return;
   }
 
   isWatching = true;
-
-  // limpiar listeners previos
   unsubscribeAll();
 
-  // Helper para añadir y registrar unsubscribe
   const add = (fn) => addUnsub(fn);
 
   try {
-    const unsubItems = onSnapshot(collection(db,'items'),
+    const unsubItems = onSnapshot(collection(db, 'items'),
       (snap) => {
         catalogo = [];
         snap.forEach(d => catalogo.push({ id: d.id, ...d.data() }));
         renderCatalogo();
       },
       (err) => {
-        // ignora si es por logout
         if (err?.code === 'permission-denied' && !auth.currentUser) {
           console.warn('[realtime] items onSnapshot ignored permission-denied after signOut');
           return;
@@ -265,7 +263,7 @@ function watchCollectionsRealtime(){
     );
     add(unsubItems);
 
-    const unsubRanks = onSnapshot(collection(db,'ranks'),
+    const unsubRanks = onSnapshot(collection(db, 'ranks'),
       (snap) => {
         ranks = {};
         snap.forEach(d => ranks[d.id] = d.data());
@@ -282,7 +280,7 @@ function watchCollectionsRealtime(){
     );
     add(unsubRanks);
 
-    const unsubProfiles = onSnapshot(collection(db,'profiles'),
+    const unsubProfiles = onSnapshot(collection(db, 'profiles'),
       (snap) => {
         membersLocal = [];
         snap.forEach(d => membersLocal.push({ id: d.id, ...d.data() }));
@@ -299,7 +297,7 @@ function watchCollectionsRealtime(){
     );
     add(unsubProfiles);
 
-    const unsubInventories = onSnapshot(collection(db,'inventories'),
+    const unsubInventories = onSnapshot(collection(db, 'inventories'),
       (snap) => {
         inventoriesLocal = {};
         snap.forEach(d => {
@@ -323,7 +321,6 @@ function watchCollectionsRealtime(){
   } catch (err) {
     console.error('watchCollectionsRealtime error:', err);
     toast('Error iniciando realtime: ' + (err.message || err), 'error', 6000);
-    // aseguramos que la bandera se pueda reiniciar
     isWatching = false;
   }
 }
@@ -352,9 +349,7 @@ function addItemRow() {
 document.getElementById('btn-add-item').addEventListener('click', () => addItemRow());
 
 /* --------------------------
-   Submit formulario: guarda registries y actualiza inventories
-   Ahora: envía el payload al Cloudflare Worker para que haga el embed y,
-   si el Worker responde OK, marca processed:true en Firestore.
+   Submit formulario - crear registry + actualizar inventarios + enviar Worker
    -------------------------- */
 document.getElementById('form-registro').addEventListener('submit', async (e) => {
   e.preventDefault();
@@ -368,7 +363,6 @@ document.getElementById('form-registro').addEventListener('submit', async (e) =>
   const actividad = document.getElementById('actividad').value;
   if (!actividad) return toast('Selecciona la actividad', 'error');
 
-  // Construir items (incluyendo pct si lo tiene)
   const items = filas.map(r => {
     const id = r.querySelector('.sel-item').value;
     const qty = Number(r.querySelector('.qty-item').value) || 0;
@@ -383,8 +377,8 @@ document.getElementById('form-registro').addEventListener('submit', async (e) =>
   });
 
   try {
-    // 1) crear registry en Firestore con processed:false
-    const registryRef = await addDoc(collection(db,'registries'), {
+    // 1) crear registry en Firestore (processed:false)
+    const registryRef = await addDoc(collection(db, 'registries'), {
       authorId: auth.currentUser.uid,
       authorEmail: auth.currentUser.email,
       memberId: member.id,
@@ -395,16 +389,16 @@ document.getElementById('form-registro').addEventListener('submit', async (e) =>
       processed: false
     });
 
-    // 2) actualizar inventarios (upsert simplificado)
+    // 2) actualizar inventarios (upsert)
     for (const it of items) {
-      const q = query(collection(db,'inventories'), where('userId','==',member.id), where('itemId','==',it.itemId));
+      const q = query(collection(db, 'inventories'), where('userId', '==', member.id), where('itemId', '==', it.itemId));
       const snap = await getDocs(q);
       if (!snap.empty) {
         const existingDoc = snap.docs[0];
         const newQty = (existingDoc.data().qty || 0) + it.qty;
         await updateDoc(existingDoc.ref, { qty: newQty, updatedAt: serverTimestamp() });
       } else {
-        await addDoc(collection(db,'inventories'), {
+        await addDoc(collection(db, 'inventories'), {
           userId: member.id,
           itemId: it.itemId,
           qty: it.qty,
@@ -414,13 +408,12 @@ document.getElementById('form-registro').addEventListener('submit', async (e) =>
       }
     }
 
-    // 3) Preparar resumen de loot y totalValor (cliente)
-    // Calculamos usando la prioridad: pctItem ?? pctRank
+    // 3) preparar resumen del loot (cliente) y calcular total según prioridad pctItem ?? pctRank
     const rango = ranks[member.rankId] || {};
     const pctRank = member.tiene500 ? (rango.pct500 || rango.pct || 0) : (rango.pct || 0);
 
     let totalValor = 0;
-    const lootParts = []; // para "AK-47 x2, usp x1..."
+    const lootParts = [];
     for (const it of items) {
       const pctItem = (typeof it.pct === 'number') ? it.pct : null;
       const effectivePct = (pctItem !== null) ? pctItem : pctRank;
@@ -430,20 +423,17 @@ document.getElementById('form-registro').addEventListener('submit', async (e) =>
     }
     const lootSummary = lootParts.join(', ');
 
-    // 4) Enviar al Worker (instantáneo) con authorName, lootSummary y totalValor
+    // 4) enviar al Worker (instantáneo)
     try {
-      // obtener nombre del admin (si lo tienes guardado en admins/{uid} usa ese displayName)
       let authorName = auth.currentUser.email || auth.currentUser.uid;
       try {
         const admSnap = await getDoc(doc(db, 'admins', auth.currentUser.uid));
         if (admSnap.exists() && admSnap.data().displayName) {
           authorName = admSnap.data().displayName;
         }
-      } catch (e) {
-        // ignore
-      }
+      } catch (e) { /* ignore */ }
 
-      const idToken = await getIdToken(auth.currentUser, /* forceRefresh */ true);
+      const idToken = await getIdToken(auth.currentUser, true);
       const payload = {
         registryId: registryRef.id,
         authorId: auth.currentUser.uid,
@@ -459,7 +449,7 @@ document.getElementById('form-registro').addEventListener('submit', async (e) =>
       };
 
       const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 10000); // 10s
+      const timeout = setTimeout(() => controller.abort(), 10000);
       const resp = await fetch(WORKER_URL, {
         method: 'POST',
         headers: {
@@ -484,7 +474,7 @@ document.getElementById('form-registro').addEventListener('submit', async (e) =>
       toast('Error enviando a Discord: ' + (err.message || err), 'error', 6000);
     }
 
-    // limpiar formulario
+    // limpiar
     contenedorItems.innerHTML = '';
     addItemRow();
     buscarMiembroInput.value = '';
@@ -497,52 +487,51 @@ document.getElementById('form-registro').addEventListener('submit', async (e) =>
 });
 
 /* --------------------------
-   RENDERS
+   RENDERS: select rangos, catalogo, miembros
    -------------------------- */
 function renderSelectRangos() {
   const select = document.getElementById('mi-rango');
-  if(!select) return;
+  if (!select) return;
   select.innerHTML = '<option value="">-- Selecciona un rango --</option>' +
     Object.keys(ranks).map(k => `<option value="${k}">${escapeHtml(k)}</option>`).join('');
 }
 
 function renderCatalogo() {
   const lista = document.getElementById('lista-catalogo');
-  if (lista) {
-    lista.innerHTML = '';
-    catalogo.forEach(c => {
-      const el = document.createElement('div');
-      el.className = 'catalogo-item';
+  if (!lista) return;
+  lista.innerHTML = '';
+  catalogo.forEach(c => {
+    const el = document.createElement('div');
+    el.className = 'catalogo-item';
 
-      const pctLabel = (typeof c.pct === 'number') ? ` • Item pct: ${Math.round(c.pct * 100)}%` : '';
-      const pagableLabel = (c.pagable === false) ? '• No pagable' : '';
+    const pctLabel = (typeof c.pct === 'number') ? ` • Item pct: ${Math.round(c.pct * 100)}%` : '';
+    const pagableLabel = (c.pagable === false) ? '• No pagable' : '';
 
-      el.innerHTML = `
-        <div>
-          <strong>${escapeHtml(c.nombre)}</strong>
-          <div class="small">Valor: ${Number(c.valorBase || 0)} ${pagableLabel}${pctLabel}</div>
-        </div>
-        <button class="btn-delete" data-id="${c.id}">🗑️</button>
-      `;
+    el.innerHTML = `
+      <div>
+        <strong>${escapeHtml(c.nombre)}</strong>
+        <div class="small">Valor: ${Number(c.valorBase || 0)} ${pagableLabel}${pctLabel}</div>
+      </div>
+      <button class="btn-delete" data-id="${c.id}">🗑️</button>
+    `;
 
-      el.querySelector('.btn-delete').onclick = async () => {
-        if (!confirm('¿Borrar objeto del catálogo?')) return;
-        try {
-          await deleteDoc(doc(db, 'items', c.id));
-          toast('Objeto eliminado');
-        } catch (err) {
-          console.error('Error borrando item:', err);
-          toast('Error borrando item: ' + (err.message || err), 'error');
-        }
-      };
-      lista.appendChild(el);
-    });
-  }
+    el.querySelector('.btn-delete').onclick = async () => {
+      if (!confirm('¿Borrar objeto del catálogo?')) return;
+      try {
+        await deleteDoc(doc(db, 'items', c.id));
+        toast('Objeto eliminado');
+      } catch (err) {
+        console.error('Error borrando item:', err);
+        toast('Error borrando item: ' + (err.message || err), 'error');
+      }
+    };
+    lista.appendChild(el);
+  });
 }
 
 function renderMiembros() {
   const grid = document.getElementById('grid-miembros');
-  if(!grid) return;
+  if (!grid) return;
   grid.innerHTML = '';
   membersLocal.forEach(m => {
     const el = document.createElement('div');
@@ -562,9 +551,9 @@ function renderMiembros() {
     };
     el.querySelector('.btn-delete').onclick = async (e) => {
       e.stopPropagation();
-      if (!confirm('¿Eliminar miembro ' + (m.displayName||m.username) + '?')) return;
+      if (!confirm('¿Eliminar miembro ' + (m.displayName || m.username) + '?')) return;
       try {
-        await deleteDoc(doc(db,'profiles',m.id));
+        await deleteDoc(doc(db, 'profiles', m.id));
         toast('Miembro eliminado');
       } catch (err) {
         console.error('Error eliminando miembro:', err);
@@ -585,8 +574,8 @@ buscarMiembroInput.addEventListener('input', () => {
     sugerenciasMiembro.classList.remove('active');
     return;
   }
-  const matches = membersLocal.filter(m => ((m.displayName||'').toLowerCase().includes(q) || (m.username||'').toLowerCase().includes(q))).slice(0,8);
-  if (matches.length>0) {
+  const matches = membersLocal.filter(m => ((m.displayName || '').toLowerCase().includes(q) || (m.username || '').toLowerCase().includes(q))).slice(0, 8);
+  if (matches.length > 0) {
     sugerenciasMiembro.classList.add('active');
     matches.forEach(m => {
       const div = document.createElement('div');
@@ -604,7 +593,6 @@ buscarMiembroInput.addEventListener('input', () => {
   }
 });
 
-// cerrar sugerencias al click fuera
 document.addEventListener('click', (e) => {
   if (!buscarMiembroInput.contains(e.target) && !sugerenciasMiembro.contains(e.target)) {
     sugerenciasMiembro.classList.remove('active');
@@ -612,12 +600,12 @@ document.addEventListener('click', (e) => {
 });
 
 /* --------------------------
-   MODAL INVENTARIO
+   MODAL INVENTARIO (mostrar + decrementar 1 sin confirm)
    -------------------------- */
 const modal = document.getElementById('modal-inventario');
 const modalClose = document.getElementById('modal-close');
 modalClose.onclick = () => modal.classList.remove('active');
-modal.onclick = (e) => { if (e.target===modal) modal.classList.remove('active'); };
+modal.onclick = (e) => { if (e.target === modal) modal.classList.remove('active'); };
 
 async function mostrarInventarioMiembro(miembro) {
   const q = query(collection(db, 'inventories'), where('userId', '==', miembro.id));
@@ -625,11 +613,9 @@ async function mostrarInventarioMiembro(miembro) {
   const items = [];
   snap.forEach(d => items.push({ id: d.id, ...d.data() }));
 
-  // pctRank es el porcentaje que corresponde al rango (ej. 0.65)
   const rango = ranks[miembro.rankId] || {};
   const pctRank = miembro.tiene500 ? (rango.pct500 || rango.pct || 0) : (rango.pct || 0);
 
-  // calcular total de objetos (sum qty)
   const totalObjetos = items.reduce((s, it) => s + (Number(it.qty) || 0), 0);
 
   let totalValor = 0;
@@ -645,15 +631,11 @@ async function mostrarInventarioMiembro(miembro) {
 
     for (const it of items) {
       const itemMeta = catalogo.find(ci => ci.id === it.itemId) || {};
-
-      // pctItem si existe en el item, tiene prioridad
       const pctItem = (itemMeta && (typeof itemMeta.pct === 'number')) ? itemMeta.pct : null;
       const effectivePct = (pctItem !== null) ? pctItem : pctRank;
       const valorUnit = Math.round((itemMeta.valorBase || 0) * (effectivePct || 1));
-
       totalValor += valorUnit * (it.qty || 0);
 
-      // ahora: papelera RESTA 1 unidad (sin confirmación). Ya no mostramos la X.
       html += `<div class="item-card" data-inv-id="${it.id}">
         <button class="btn-delete btn-decrement" data-id="${it.id}" title="Quitar 1">🗑️</button>
         <div class="item-image">📦</div>
@@ -669,7 +651,6 @@ async function mostrarInventarioMiembro(miembro) {
     html += `</div>`;
     body.innerHTML = html;
 
-    // Handler: boton papelera ahora decrementa 1 (sin confirmación)
     body.querySelectorAll('.btn-decrement').forEach(btn => {
       btn.onclick = async (e) => {
         const invId = btn.dataset.id;
@@ -677,7 +658,7 @@ async function mostrarInventarioMiembro(miembro) {
           const invRef = doc(db, 'inventories', invId);
           const invSnap = await getDoc(invRef);
           if (!invSnap.exists()) {
-            mostrarInventarioMiembro(miembro); // refrescar
+            mostrarInventarioMiembro(miembro);
             return;
           }
           const currentQty = Number(invSnap.data().qty || 0);
@@ -687,7 +668,6 @@ async function mostrarInventarioMiembro(miembro) {
           } else {
             await deleteDoc(invRef);
           }
-          // refrescar vista
           mostrarInventarioMiembro(miembro);
         } catch (err) {
           console.error('Error decrementando inventory:', err);
@@ -696,9 +676,6 @@ async function mostrarInventarioMiembro(miembro) {
       };
     });
 
-    // (Eliminamos el handler de la X; ya no existe.)
-
-    // Vaciar inventario (sigue con confirmación)
     const clearBtn = document.getElementById('clear-inventory');
     if (clearBtn) {
       clearBtn.onclick = async () => {
@@ -717,18 +694,18 @@ async function mostrarInventarioMiembro(miembro) {
 }
 
 /* --------------------------
-   Crear miembro y crear item
+   Crear miembro / crear item
    -------------------------- */
 document.getElementById('btn-crear-miembro').addEventListener('click', async () => {
   const nombre = document.getElementById('mi-nombre').value.trim();
-  if (!nombre) return toast('Nombre obligatorio','error');
-  const id = nombre.toLowerCase().replace(/\s+/g,'-').replace(/[^a-z0-9-_]/g,'');
+  if (!nombre) return toast('Nombre obligatorio', 'error');
+  const id = nombre.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-_]/g, '');
   const rango = document.getElementById('mi-rango').value;
   const tiene500 = document.getElementById('mi-500').checked;
   try {
-    await setDoc(doc(db,'profiles', id), { displayName: nombre, username: id, rankId: rango, tiene500 });
+    await setDoc(doc(db, 'profiles', id), { displayName: nombre, username: id, rankId: rango, tiene500 });
     toast('Miembro creado: ' + nombre);
-    document.getElementById('mi-nombre').value='';
+    document.getElementById('mi-nombre').value = '';
   } catch (err) {
     console.error('Error creando miembro:', err);
     toast('Error creando miembro: ' + (err.message || err), 'error');
@@ -744,12 +721,12 @@ document.getElementById('btn-crear-catalogo').addEventListener('click', async ()
   if (pctInput !== '') {
     const n = Number(pctInput);
     if (isNaN(n) || n < 0 || n > 100) return toast('Porcentaje inválido (0-100)', 'error');
-    pct = n / 100; // almacenamos 0.8 para 80%
+    pct = n / 100;
   }
   if (!nombre || valor <= 0) return toast('Nombre y valor válidos requeridos', 'error');
   const id = nombre.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-_]/g, '');
   try {
-    await setDoc(doc(db, 'items', id), { nombre, valorBase: valor, pagable, pct }); // pct puede ser null
+    await setDoc(doc(db, 'items', id), { nombre, valorBase: valor, pagable, pct });
     toast('Objeto agregado al catálogo');
     document.getElementById('cat-nombre').value = '';
     document.getElementById('cat-valor').value = '';
@@ -774,10 +751,7 @@ document.getElementById('buscador-inventario').addEventListener('input', (e) => 
     return;
   }
 
-  // Buscar por usuario
-  const miembroMatch = membersLocal.filter(m => (m.displayName||'').toLowerCase().includes(q));
-
-  // Buscar por objeto
+  const miembroMatch = membersLocal.filter(m => (m.displayName || '').toLowerCase().includes(q));
   const objetoMatch = catalogo.filter(c => c.nombre.toLowerCase().includes(q));
 
   if (miembroMatch.length > 0) {
@@ -829,21 +803,15 @@ document.getElementById('buscador-inventario').addEventListener('input', (e) => 
 function escapeHtml(str) {
   if (!str) return '';
   return String(str)
-    .replaceAll('&','&amp;')
-    .replaceAll('<','&lt;')
-    .replaceAll('>','&gt;')
-    .replaceAll('"','&quot;')
-    .replaceAll("'","&#039;");
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", "&#039;");
 }
 
 /* --------------------------
-   Seed demo (ejecutar desde consola si quieres crear datos de ejemplo)
-   Uso: logueate como admin y ejecuta en consola: seedDemo()
-   -------------------------- */
-/* --------------------------
-   Seed demo (incrustada en app.js)
-   Uso: logueate como admin y ejecuta seedDemo({ force: true }) desde la consola
-   force: true -> sobrescribe/actualiza; false -> solo crea lo que no exista
+   Seed demo incrustada (ejecuta seedDemo({force:true}) desde consola)
    -------------------------- */
 async function seedDemo(opts = { force: true }) {
   if (!auth || !auth.currentUser) {
@@ -857,7 +825,7 @@ async function seedDemo(opts = { force: true }) {
     const uid = auth.currentUser.uid;
     const email = auth.currentUser.email || '';
 
-    // Crear admins/{uid} si no existe (útil para pruebas)
+    // crear admins/{uid} si no existe (opcional)
     const admRef = doc(db, 'admins', uid);
     const admSnap = await getDoc(admRef);
     if (!admSnap.exists()) {
@@ -865,11 +833,10 @@ async function seedDemo(opts = { force: true }) {
         await setDoc(admRef, { email, createdAt: serverTimestamp() });
         console.log('admins/' + uid + ' creado.');
       } else {
-        console.warn('No se creó admins/{uid} - algunas funciones de la UI pueden bloquearse si no eres admin.');
+        console.warn('No se creó admins/{uid}');
       }
     }
 
-    // Ranks (mejorados)
     const demoRanks = {
       'Peón': { nivel: 1, pct: 0.10, pct500: 0.20 },
       'Sangre Nueva': { nivel: 2, pct: 0.20, pct500: 0.30 },
@@ -886,16 +853,11 @@ async function seedDemo(opts = { force: true }) {
       const ref = doc(db, 'ranks', k);
       if (!force) {
         const s = await getDoc(ref);
-        if (s.exists()) {
-          console.log(`ranks/${k} ya existe — saltando (usa seedDemo({force:true}) para sobrescribir).`);
-          continue;
-        }
+        if (s.exists()) continue;
       }
       await setDoc(ref, demoRanks[k]);
-      console.log('ranks/' + k + ' creado/actualizado.');
     }
 
-    // Items demo (con pct donde corresponde)
     const demoItems = [
       { id: 'glock', nombre: 'de Combate (Glock)', valorBase: 240000, pagable: true },
       { id: 'beretta', nombre: 'Beretta', valorBase: 240000, pagable: true },
@@ -915,18 +877,13 @@ async function seedDemo(opts = { force: true }) {
       const ref = doc(db, 'items', it.id);
       if (!force) {
         const s = await getDoc(ref);
-        if (s.exists()) {
-          console.log(`items/${it.id} ya existe — saltando (usa seedDemo({force:true}) para sobrescribir).`);
-          continue;
-        }
+        if (s.exists()) continue;
       }
       const payload = { nombre: it.nombre, valorBase: Number(it.valorBase || 0), pagable: !!it.pagable };
       if (typeof it.pct === 'number') payload.pct = it.pct;
       await setDoc(ref, payload);
-      console.log('items/' + it.id + ' creado/actualizado.');
     }
 
-    // Profiles demo
     const demoProfiles = [
       { id: 'juan-perez', displayName: 'Juan Pérez', username: 'juan-perez', rankId: 'Delta', tiene500: true },
       { id: 'maria-lopez', displayName: 'María López', username: 'maria-lopez', rankId: 'Legión', tiene500: false },
@@ -936,10 +893,7 @@ async function seedDemo(opts = { force: true }) {
       const ref = doc(db, 'profiles', p.id);
       if (!force) {
         const s = await getDoc(ref);
-        if (s.exists()) {
-          console.log(`profiles/${p.id} ya existe — saltando.`);
-          continue;
-        }
+        if (s.exists()) continue;
       }
       await setDoc(ref, {
         displayName: p.displayName,
@@ -948,10 +902,8 @@ async function seedDemo(opts = { force: true }) {
         tiene500: !!p.tiene500,
         createdAt: serverTimestamp()
       });
-      console.log('profiles/' + p.id + ' creado/actualizado.');
     }
 
-    // Inventories demo: añade algunos items a perfiles de ejemplo
     const invSamples = [
       { userId: 'juan-perez', itemId: 'ak-compacta', qty: 1 },
       { userId: 'juan-perez', itemId: 'usp', qty: 2 },
@@ -962,10 +914,7 @@ async function seedDemo(opts = { force: true }) {
     for (const s of invSamples) {
       const q = query(collection(db, 'inventories'), where('userId', '==', s.userId), where('itemId', '==', s.itemId));
       const snap = await getDocs(q);
-      if (!snap.empty && !force) {
-        console.log(`inventory ${s.userId}/${s.itemId} ya existe — saltando.`);
-        continue;
-      }
+      if (!snap.empty && !force) continue;
       if (!snap.empty && force) {
         for (const d of snap.docs) await deleteDoc(d.ref);
       }
@@ -976,11 +925,9 @@ async function seedDemo(opts = { force: true }) {
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp()
       });
-      console.log(`inventory ${s.userId}/${s.itemId} creado.`);
     }
 
     toast('seedDemo completo ✅ (usa seedDemo({force:true}) para sobrescribir).');
-    console.log('seedDemo completo.');
     return true;
   } catch (err) {
     console.error('seedDemo error:', err);
@@ -989,7 +936,6 @@ async function seedDemo(opts = { force: true }) {
   }
 }
 
-// (opcional) exponer la función globalmente para ejecutarla desde consola más fácilmente
 window.seedDemo = seedDemo;
 
 /* --------------------------
