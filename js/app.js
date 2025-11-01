@@ -82,6 +82,7 @@ let inventoriesLocal = {};
 // Unsubscribe helpers (evitar permission-denied al hacer logout)
 // --------------------------
 let unsubscribeFns = [];
+let isWatching = false;
 
 function addUnsub(fn) {
   if (typeof fn === 'function') unsubscribeFns.push(fn);
@@ -94,6 +95,7 @@ function unsubscribeAll() {
     });
   } finally {
     unsubscribeFns = [];
+    isWatching = false;
     console.log('[DEBUG] Unsubscribed all realtime listeners');
   }
 }
@@ -130,8 +132,8 @@ btnEntrar.addEventListener('click', async () => {
 btnLogout.addEventListener('click', async () => {
   try {
     unsubscribeAll();
-    // breve espera para que se cierren conexiones (opcional)
-    await new Promise(r => setTimeout(r, 50));
+    // aumentar slightly el delay para evitar race conditions (50ms -> 200ms)
+    await new Promise(r => setTimeout(r, 200));
     await signOut(auth);
     toast('Sesión cerrada');
   } catch (err) {
@@ -143,7 +145,7 @@ btnLogout.addEventListener('click', async () => {
 btnLogoutSidebar.addEventListener('click', async () => {
   try {
     unsubscribeAll();
-    await new Promise(r => setTimeout(r, 50));
+    await new Promise(r => setTimeout(r, 200));
     await signOut(auth);
     toast('Sesión cerrada');
   } catch (err) {
@@ -221,83 +223,105 @@ async function cargarDatosIniciales() {
    Realtime watchers
    -------------------------- */
 function watchCollectionsRealtime(){
+  // Si ya estamos escuchando, no hacer nada
+  if (isWatching) {
+    console.log('[DEBUG] watchCollectionsRealtime: ya está activo, skip');
+    return;
+  }
+  // Solo arrancar si hay usuario autenticado
+  if (!auth.currentUser) {
+    console.warn('[DEBUG] watchCollectionsRealtime: no hay user, no iniciar listeners');
+    return;
+  }
+
+  isWatching = true;
+
   // limpiar listeners previos
   unsubscribeAll();
 
-  // items
-  const unsubItems = onSnapshot(collection(db,'items'),
-    (snap) => {
-      catalogo = [];
-      snap.forEach(d => catalogo.push({ id: d.id, ...d.data() }));
-      renderCatalogo();
-    },
-    (err) => {
-      if (err?.code === 'permission-denied' && !auth.currentUser) {
-        console.warn('[realtime] items onSnapshot ignored permission-denied after signOut');
-        return;
-      }
-      console.error('[realtime] items onSnapshot error:', err);
-      toast('Error realtime (items): ' + (err.code || err.message || err), 'error', 6000);
-    }
-  );
-  addUnsub(unsubItems);
+  // Helper para añadir y registrar unsubscribe
+  const add = (fn) => addUnsub(fn);
 
-  // ranks
-  const unsubRanks = onSnapshot(collection(db,'ranks'),
-    (snap) => {
-      ranks = {};
-      snap.forEach(d => ranks[d.id] = d.data());
-      renderSelectRangos();
-    },
-    (err) => {
-      if (err?.code === 'permission-denied' && !auth.currentUser) {
-        console.warn('[realtime] ranks onSnapshot ignored permission-denied after signOut');
-        return;
+  try {
+    const unsubItems = onSnapshot(collection(db,'items'),
+      (snap) => {
+        catalogo = [];
+        snap.forEach(d => catalogo.push({ id: d.id, ...d.data() }));
+        renderCatalogo();
+      },
+      (err) => {
+        // ignora si es por logout
+        if (err?.code === 'permission-denied' && !auth.currentUser) {
+          console.warn('[realtime] items onSnapshot ignored permission-denied after signOut');
+          return;
+        }
+        console.error('[realtime] items onSnapshot error:', err);
+        toast('Error realtime (items): ' + (err.code || err.message || err), 'error', 6000);
       }
-      console.error('[realtime] ranks onSnapshot error:', err);
-      toast('Error realtime (ranks): ' + (err.code || err.message || err), 'error', 6000);
-    }
-  );
-  addUnsub(unsubRanks);
+    );
+    add(unsubItems);
 
-  // profiles
-  const unsubProfiles = onSnapshot(collection(db,'profiles'),
-    (snap) => {
-      membersLocal = [];
-      snap.forEach(d => membersLocal.push({ id: d.id, ...d.data() }));
-      renderMiembros();
-    },
-    (err) => {
-      if (err?.code === 'permission-denied' && !auth.currentUser) {
-        console.warn('[realtime] profiles onSnapshot ignored permission-denied after signOut');
-        return;
+    const unsubRanks = onSnapshot(collection(db,'ranks'),
+      (snap) => {
+        ranks = {};
+        snap.forEach(d => ranks[d.id] = d.data());
+        renderSelectRangos();
+      },
+      (err) => {
+        if (err?.code === 'permission-denied' && !auth.currentUser) {
+          console.warn('[realtime] ranks onSnapshot ignored permission-denied after signOut');
+          return;
+        }
+        console.error('[realtime] ranks onSnapshot error:', err);
+        toast('Error realtime (ranks): ' + (err.code || err.message || err), 'error', 6000);
       }
-      console.error('[realtime] profiles onSnapshot error:', err);
-      toast('Error realtime (profiles): ' + (err.code || err.message || err), 'error', 6000);
-    }
-  );
-  addUnsub(unsubProfiles);
+    );
+    add(unsubRanks);
 
-  // inventories
-  const unsubInventories = onSnapshot(collection(db,'inventories'),
-    (snap) => {
-      inventoriesLocal = {};
-      snap.forEach(d => {
-        const data = d.data();
-        if (!inventoriesLocal[data.userId]) inventoriesLocal[data.userId] = [];
-        inventoriesLocal[data.userId].push({ id: d.id, ...data });
-      });
-    },
-    (err) => {
-      if (err?.code === 'permission-denied' && !auth.currentUser) {
-        console.warn('[realtime] inventories onSnapshot ignored permission-denied after signOut');
-        return;
+    const unsubProfiles = onSnapshot(collection(db,'profiles'),
+      (snap) => {
+        membersLocal = [];
+        snap.forEach(d => membersLocal.push({ id: d.id, ...d.data() }));
+        renderMiembros();
+      },
+      (err) => {
+        if (err?.code === 'permission-denied' && !auth.currentUser) {
+          console.warn('[realtime] profiles onSnapshot ignored permission-denied after signOut');
+          return;
+        }
+        console.error('[realtime] profiles onSnapshot error:', err);
+        toast('Error realtime (profiles): ' + (err.code || err.message || err), 'error', 6000);
       }
-      console.error('[realtime] inventories onSnapshot error:', err);
-      toast('Error realtime (inventories): ' + (err.code || err.message || err), 'error', 6000);
-    }
-  );
-  addUnsub(unsubInventories);
+    );
+    add(unsubProfiles);
+
+    const unsubInventories = onSnapshot(collection(db,'inventories'),
+      (snap) => {
+        inventoriesLocal = {};
+        snap.forEach(d => {
+          const data = d.data();
+          if (!inventoriesLocal[data.userId]) inventoriesLocal[data.userId] = [];
+          inventoriesLocal[data.userId].push({ id: d.id, ...data });
+        });
+      },
+      (err) => {
+        if (err?.code === 'permission-denied' && !auth.currentUser) {
+          console.warn('[realtime] inventories onSnapshot ignored permission-denied after signOut');
+          return;
+        }
+        console.error('[realtime] inventories onSnapshot error:', err);
+        toast('Error realtime (inventories): ' + (err.code || err.message || err), 'error', 6000);
+      }
+    );
+    add(unsubInventories);
+
+    console.log('[DEBUG] watchCollectionsRealtime: listeners attached');
+  } catch (err) {
+    console.error('watchCollectionsRealtime error:', err);
+    toast('Error iniciando realtime: ' + (err.message || err), 'error', 6000);
+    // aseguramos que la bandera se pueda reiniciar
+    isWatching = false;
+  }
 }
 
 /* --------------------------
