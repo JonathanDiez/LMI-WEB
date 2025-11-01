@@ -619,11 +619,16 @@ async function mostrarInventarioMiembro(miembro) {
 
       totalValor += valorUnit * (it.qty || 0);
 
-      html += `<div class="item-card">
-        <button class="btn-delete item-delete" data-id="${it.id}">🗑️</button>
+      html += `<div class="item-card" data-inv-id="${it.id}">
+        <!-- Botón para decrementar 1 (sin confirmación) -->
+        <button class="btn-decrement" data-id="${it.id}" title="Quitar 1">✖</button>
+
+        <!-- Botón eliminar completo (seguirá pidiendo confirmación como antes) -->
+        <button class="btn-delete item-delete" data-id="${it.id}" title="Eliminar objeto">🗑️</button>
+
         <div class="item-image">📦</div>
         <strong>${escapeHtml(itemMeta.nombre || it.itemId)}</strong>
-        <div class="small">Cantidad: ${it.qty}</div>
+        <div class="small">Cantidad: <span class="item-qty" data-id="${it.id}">${it.qty}</span></div>
         <div class="small">Valor unit.: ${valorUnit}${ (pctItem !== null) ? ` • pct item: ${Math.round(pctItem*100)}%` : ` • pct rango: ${Math.round((pctRank||0)*100)}%` }</div>
         <div style="color: var(--accent); font-weight: 600; margin-top: 0.5rem;">
           ${valorUnit * it.qty}
@@ -634,19 +639,52 @@ async function mostrarInventarioMiembro(miembro) {
     html += `</div>`;
     body.innerHTML = html;
 
-    // Handlers de borrado por item (recalcula mostrando de nuevo)
+    // Handler: decrementar 1 unidad sin confirmación
+    body.querySelectorAll('.btn-decrement').forEach(btn => {
+      btn.onclick = async (e) => {
+        const invId = btn.dataset.id;
+        try {
+          // Obtener la doc actual (por si cambió)
+          const invRef = doc(db, 'inventories', invId);
+          const invSnap = await getDoc(invRef);
+          if (!invSnap.exists()) {
+            // ya no existe
+            const qtyEl = body.querySelector(`.item-qty[data-id="${invId}"]`);
+            if (qtyEl) qtyEl.textContent = '0';
+            return;
+          }
+          const currentQty = Number(invSnap.data().qty || 0);
+          const newQty = currentQty - 1;
+          if (newQty > 0) {
+            await updateDoc(invRef, { qty: newQty, updatedAt: serverTimestamp() });
+            // Actualizar UI localmente para feedback instantáneo
+            const qtyEl = body.querySelector(`.item-qty[data-id="${invId}"]`);
+            if (qtyEl) qtyEl.textContent = String(newQty);
+          } else {
+            // si llega a 0 o menos, borramos el documento
+            await deleteDoc(invRef);
+            // quitar el card del DOM
+            const card = body.querySelector(`.item-card[data-inv-id="${invId}"]`);
+            if (card) card.remove();
+          }
+          // (Opcional) recalc totalValor mostrando de nuevo el modal actual
+          // Simple y seguro: recargar la vista del inventario
+          mostrarInventarioMiembro(miembro);
+        } catch (err) {
+          console.error('Error decrementando inventory:', err);
+          toast('Error al quitar 1 unidad: ' + (err.message || err), 'error', 4000);
+        }
+      };
+    });
+
+    // Handlers de borrado por item (con confirmación, como antes)
     body.querySelectorAll('.item-delete').forEach(btn => {
       btn.onclick = async (e) => {
         const id = btn.dataset.id;
         if (!confirm('¿Eliminar este objeto?')) return;
-        try {
-          await deleteDoc(doc(db, 'inventories', id));
-          toast('Objeto eliminado del inventario');
-        } catch (err) {
-          console.error('Error eliminando inventario item:', err);
-          toast('Error eliminando item: ' + (err.message || err), 'error');
-        }
-        // recursivamente recalc/mostrar
+        await deleteDoc(doc(db, 'inventories', id));
+        toast('Objeto eliminado del inventario');
+        // recalc/mostrar
         mostrarInventarioMiembro(miembro);
       };
     });
@@ -656,14 +694,9 @@ async function mostrarInventarioMiembro(miembro) {
     if (clearBtn) {
       clearBtn.onclick = async () => {
         if (!confirm('¿Vaciar todo el inventario de ' + (miembro.displayName || miembro.username) + '?')) return;
-        try {
-          const snapClear = await getDocs(query(collection(db, 'inventories'), where('userId', '==', miembro.id)));
-          for (const d of snapClear.docs) await deleteDoc(d.ref);
-          toast('Inventario vaciado');
-        } catch (err) {
-          console.error('Error vaciando inventario:', err);
-          toast('Error vaciando inventario: ' + (err.message || err), 'error');
-        }
+        const snapClear = await getDocs(query(collection(db, 'inventories'), where('userId', '==', miembro.id)));
+        for (const d of snapClear.docs) await deleteDoc(d.ref);
+        toast('Inventario vaciado');
         mostrarInventarioMiembro(miembro);
       };
     }
@@ -798,35 +831,157 @@ function escapeHtml(str) {
    Seed demo (ejecutar desde consola si quieres crear datos de ejemplo)
    Uso: logueate como admin y ejecuta en consola: seedDemo()
    -------------------------- */
-window.seedDemo = async function seedDemo() {
-  if (!auth.currentUser) return alert('Loguéate como admin primero');
-  if (!confirm('Crear datos demo (ranks, items, 2 perfiles)?')) return;
-  const demoRanks = {
-    'Sangre Nueva': { nivel: 1, pct: 0.20, pct500: 0.30 },
-    'Soldado': { nivel: 3, pct: 0.35, pct500: 0.45 },
-    'Capo': { nivel: 7, pct: 0.50, pct500: 0.60 },
-    'Blood Line': { nivel: 10, pct: 0.65, pct500: 0.75 }
-  };
-  const demoItems = [
-    { id: 'ak-47', nombre: 'AK-47', valorBase: 15000, pagable: true },
-    { id: 'm4a1', nombre: 'M4A1', valorBase: 18000, pagable: true },
-    { id: 'usp', nombre: 'USP', valorBase: 5000, pagable: true }
-  ];
-  try {
-    for (const k of Object.keys(demoRanks)) {
-      await setDoc(doc(db,'ranks',k), demoRanks[k]);
-    }
-    for (const it of demoItems) {
-      await setDoc(doc(db,'items',it.id), { nombre: it.nombre, valorBase: it.valorBase, pagable: it.pagable });
-    }
-    await setDoc(doc(db,'profiles','juan-perez'), { displayName: 'Juan Pérez', username: 'juan-perez', rankId: 'Soldado', tiene500: true });
-    await setDoc(doc(db,'profiles','maria-lopez'), { displayName: 'María López', username: 'maria-lopez', rankId: 'Capo', tiene500: false });
-    toast('Datos demo creados. Recarga la página si no ves los cambios.');
-  } catch (err) {
-    console.error('Error creando seed demo:', err);
-    toast('Error seed demo: ' + (err.message || err), 'error');
+/* --------------------------
+   Seed demo (incrustada en app.js)
+   Uso: logueate como admin y ejecuta seedDemo({ force: true }) desde la consola
+   force: true -> sobrescribe/actualiza; false -> solo crea lo que no exista
+   -------------------------- */
+async function seedDemo(opts = { force: true }) {
+  if (!auth || !auth.currentUser) {
+    alert('Loguéate como admin primero');
+    return;
   }
-};
+  const force = !!(opts && opts.force);
+  if (!confirm(`Crear datos demo (ranks, items con pct, perfiles, inventories)?\nForce overwrite: ${force}`)) return;
+
+  try {
+    const uid = auth.currentUser.uid;
+    const email = auth.currentUser.email || '';
+
+    // Crear admins/{uid} si no existe (útil para pruebas)
+    const admRef = doc(db, 'admins', uid);
+    const admSnap = await getDoc(admRef);
+    if (!admSnap.exists()) {
+      if (confirm('No existe admins/' + uid + '. ¿Crear admin para ' + email + ' (solo para pruebas)?')) {
+        await setDoc(admRef, { email, createdAt: serverTimestamp() });
+        console.log('admins/' + uid + ' creado.');
+      } else {
+        console.warn('No se creó admins/{uid} - algunas funciones de la UI pueden bloquearse si no eres admin.');
+      }
+    }
+
+    // Ranks (mejorados)
+    const demoRanks = {
+      'Peón': { nivel: 1, pct: 0.10, pct500: 0.20 },
+      'Sangre Nueva': { nivel: 2, pct: 0.20, pct500: 0.30 },
+      'Delta': { nivel: 3, pct: 0.35, pct500: 0.45 },
+      'Sombra Roja': { nivel: 4, pct: 0.35, pct500: 0.45 },
+      'Legión': { nivel: 5, pct: 0.50, pct500: 0.60 },
+      'Torre': { nivel: 6, pct: 0.65, pct500: 0.75 },
+      'Alpha': { nivel: 7, pct: 0.65, pct500: 0.75 },
+      'Sangre Real': { nivel: 8, pct: 0.75, pct500: 0.85 },
+      'Corona de Sangre': { nivel: 9, pct: 0.75, pct500: 0.85 }
+    };
+
+    for (const k of Object.keys(demoRanks)) {
+      const ref = doc(db, 'ranks', k);
+      if (!force) {
+        const s = await getDoc(ref);
+        if (s.exists()) {
+          console.log(`ranks/${k} ya existe — saltando (usa seedDemo({force:true}) para sobrescribir).`);
+          continue;
+        }
+      }
+      await setDoc(ref, demoRanks[k]);
+      console.log('ranks/' + k + ' creado/actualizado.');
+    }
+
+    // Items demo (con pct donde corresponde)
+    const demoItems = [
+      { id: 'glock', nombre: 'de Combate (Glock)', valorBase: 240000, pagable: true },
+      { id: 'beretta', nombre: 'Beretta', valorBase: 240000, pagable: true },
+      { id: 'luger', nombre: 'Luger', valorBase: 270000, pagable: true },
+      { id: 'tec9', nombre: 'Tec-9', valorBase: 215000, pagable: true },
+      { id: 'thompson', nombre: 'Thompson', valorBase: 1200000, pagable: true, pct: 0.60 },
+      { id: 'sns', nombre: 'Sns', valorBase: 150000, pagable: true },
+      { id: 'skorpion', nombre: 'Skorpion', valorBase: 200000, pagable: false },
+      { id: 'usp', nombre: 'Usp', valorBase: 450000, pagable: true },
+      { id: 'uzi', nombre: 'Uzi', valorBase: 500000, pagable: true },
+      { id: 'recortada', nombre: 'Recortada', valorBase: 500000, pagable: true },
+      { id: 'ap', nombre: 'Pistola Ametralladora (Ap)', valorBase: 2600000, pagable: true, pct: 0.75 },
+      { id: 'ak-compacta', nombre: 'Ak Compacta', valorBase: 17000000, pagable: true, pct: 0.80 }
+    ];
+
+    for (const it of demoItems) {
+      const ref = doc(db, 'items', it.id);
+      if (!force) {
+        const s = await getDoc(ref);
+        if (s.exists()) {
+          console.log(`items/${it.id} ya existe — saltando (usa seedDemo({force:true}) para sobrescribir).`);
+          continue;
+        }
+      }
+      const payload = { nombre: it.nombre, valorBase: Number(it.valorBase || 0), pagable: !!it.pagable };
+      if (typeof it.pct === 'number') payload.pct = it.pct;
+      await setDoc(ref, payload);
+      console.log('items/' + it.id + ' creado/actualizado.');
+    }
+
+    // Profiles demo
+    const demoProfiles = [
+      { id: 'juan-perez', displayName: 'Juan Pérez', username: 'juan-perez', rankId: 'Delta', tiene500: true },
+      { id: 'maria-lopez', displayName: 'María López', username: 'maria-lopez', rankId: 'Legión', tiene500: false },
+      { id: 'carlos-ruiz', displayName: 'Carlos Ruiz', username: 'carlos-ruiz', rankId: 'Sangre Nueva', tiene500: false }
+    ];
+    for (const p of demoProfiles) {
+      const ref = doc(db, 'profiles', p.id);
+      if (!force) {
+        const s = await getDoc(ref);
+        if (s.exists()) {
+          console.log(`profiles/${p.id} ya existe — saltando.`);
+          continue;
+        }
+      }
+      await setDoc(ref, {
+        displayName: p.displayName,
+        username: p.username,
+        rankId: p.rankId,
+        tiene500: !!p.tiene500,
+        createdAt: serverTimestamp()
+      });
+      console.log('profiles/' + p.id + ' creado/actualizado.');
+    }
+
+    // Inventories demo: añade algunos items a perfiles de ejemplo
+    const invSamples = [
+      { userId: 'juan-perez', itemId: 'ak-compacta', qty: 1 },
+      { userId: 'juan-perez', itemId: 'usp', qty: 2 },
+      { userId: 'maria-lopez', itemId: 'thompson', qty: 1 },
+      { userId: 'carlos-ruiz', itemId: 'glock', qty: 4 }
+    ];
+
+    for (const s of invSamples) {
+      const q = query(collection(db, 'inventories'), where('userId', '==', s.userId), where('itemId', '==', s.itemId));
+      const snap = await getDocs(q);
+      if (!snap.empty && !force) {
+        console.log(`inventory ${s.userId}/${s.itemId} ya existe — saltando.`);
+        continue;
+      }
+      if (!snap.empty && force) {
+        for (const d of snap.docs) await deleteDoc(d.ref);
+      }
+      await addDoc(collection(db, 'inventories'), {
+        userId: s.userId,
+        itemId: s.itemId,
+        qty: Number(s.qty || 0),
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp()
+      });
+      console.log(`inventory ${s.userId}/${s.itemId} creado.`);
+    }
+
+    toast('seedDemo completo ✅ (usa seedDemo({force:true}) para sobrescribir).');
+    console.log('seedDemo completo.');
+    return true;
+  } catch (err) {
+    console.error('seedDemo error:', err);
+    toast('Error creando datos demo: ' + (err.message || err), 'error', 8000);
+    throw err;
+  }
+}
+
+// (opcional) exponer la función globalmente para ejecutarla desde consola más fácilmente
+window.seedDemo = seedDemo;
 
 /* --------------------------
    FIN
