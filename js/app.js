@@ -41,6 +41,7 @@ const db = getFirestore(app);
 
 window.auth = auth;
 window.db = db;
+window.serverTimestamp = serverTimestamp;
 
 /* --------------------------
    ELEMENTOS UI
@@ -367,12 +368,18 @@ document.getElementById('form-registro').addEventListener('submit', async (e) =>
   const actividad = document.getElementById('actividad').value;
   if (!actividad) return toast('Selecciona la actividad', 'error');
 
+  // Construir items (incluyendo pct si lo tiene)
   const items = filas.map(r => {
     const id = r.querySelector('.sel-item').value;
     const qty = Number(r.querySelector('.qty-item').value) || 0;
     const item = catalogo.find(c => c.id === id) || {};
-    // Incluimos pct si existe en el item, y el valorBase para que el Worker pueda calcular.
-    return { itemId: id, nombre: item.nombre || id, qty, valorBase: item.valorBase || 0, pct: (typeof item.pct === 'number') ? item.pct : null };
+    return {
+      itemId: id,
+      nombre: item.nombre || id,
+      qty,
+      valorBase: item.valorBase || 0,
+      pct: (typeof item.pct === 'number') ? item.pct : null
+    };
   });
 
   try {
@@ -407,32 +414,59 @@ document.getElementById('form-registro').addEventListener('submit', async (e) =>
       }
     }
 
-    // 3) Enviar al Worker (instantáneo)
-    try {
-      const idToken = await getIdToken(auth.currentUser, /* forceRefresh */ true);
+    // 3) Preparar resumen de loot y totalValor (cliente)
+    // Calculamos usando la prioridad: pctItem ?? pctRank
+    const rango = ranks[member.rankId] || {};
+    const pctRank = member.tiene500 ? (rango.pct500 || rango.pct || 0) : (rango.pct || 0);
 
-      // Worker espera { registryId, payload }
-      const bodyToSend = {
-        registryId: registryRef.id,
-        payload: {
-          authorId: auth.currentUser.uid,
-          authorEmail: auth.currentUser.email,
-          memberId: member.id,
-          memberName: member.displayName || member.username || member.id,
-          actividad,
-          items
+    let totalValor = 0;
+    const lootParts = []; // para "AK-47 x2, usp x1..."
+    for (const it of items) {
+      const pctItem = (typeof it.pct === 'number') ? it.pct : null;
+      const effectivePct = (pctItem !== null) ? pctItem : pctRank;
+      const valorUnit = Math.round((it.valorBase || 0) * (effectivePct || 1));
+      totalValor += valorUnit * (it.qty || 0);
+      lootParts.push(`${it.nombre} x${it.qty}`);
+    }
+    const lootSummary = lootParts.join(', ');
+
+    // 4) Enviar al Worker (instantáneo) con authorName, lootSummary y totalValor
+    try {
+      // obtener nombre del admin (si lo tienes guardado en admins/{uid} usa ese displayName)
+      let authorName = auth.currentUser.email || auth.currentUser.uid;
+      try {
+        const admSnap = await getDoc(doc(db, 'admins', auth.currentUser.uid));
+        if (admSnap.exists() && admSnap.data().displayName) {
+          authorName = admSnap.data().displayName;
         }
+      } catch (e) {
+        // ignore
+      }
+
+      const idToken = await getIdToken(auth.currentUser, /* forceRefresh */ true);
+      const payload = {
+        registryId: registryRef.id,
+        authorId: auth.currentUser.uid,
+        authorEmail: auth.currentUser.email,
+        authorName,
+        memberId: member.id,
+        memberName: member.displayName || member.username || member.id,
+        actividad,
+        items,
+        lootSummary,
+        totalValor,
+        createdAt: new Date().toISOString()
       };
 
       const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 10000); // timeout 10s
+      const timeout = setTimeout(() => controller.abort(), 10000); // 10s
       const resp = await fetch(WORKER_URL, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': 'Bearer ' + idToken
         },
-        body: JSON.stringify(bodyToSend),
+        body: JSON.stringify(payload),
         signal: controller.signal
       });
       clearTimeout(timeout);
@@ -441,16 +475,13 @@ document.getElementById('form-registro').addEventListener('submit', async (e) =>
         const text = await resp.text().catch(() => '');
         console.error('Worker error:', resp.status, text);
         toast('Worker error: ' + (resp.statusText || resp.status) + (text ? ' — ' + text : ''), 'error', 6000);
-        // dejamos processed:false para reintentar manualmente
       } else {
-        // marcar processed:true en Firestore (ahora que Worker respondió OK)
         await updateDoc(registryRef, { processed: true, processedAt: serverTimestamp() });
         toast('Registro guardado y enviado a Discord (instantáneo).');
       }
     } catch (err) {
       console.error('Error enviando al worker:', err);
       toast('Error enviando a Discord: ' + (err.message || err), 'error', 6000);
-      // dejamos processed:false para reintento
     }
 
     // limpiar formulario
@@ -458,6 +489,7 @@ document.getElementById('form-registro').addEventListener('submit', async (e) =>
     addItemRow();
     buscarMiembroInput.value = '';
     document.getElementById('actividad').value = '';
+
   } catch (err) {
     console.error(err);
     toast('Error guardando registro: ' + (err.message || err), 'error');
@@ -597,6 +629,9 @@ async function mostrarInventarioMiembro(miembro) {
   const rango = ranks[miembro.rankId] || {};
   const pctRank = miembro.tiene500 ? (rango.pct500 || rango.pct || 0) : (rango.pct || 0);
 
+  // calcular total de objetos (sum qty)
+  const totalObjetos = items.reduce((s, it) => s + (Number(it.qty) || 0), 0);
+
   let totalValor = 0;
   const body = document.getElementById('modal-body');
 
@@ -604,7 +639,7 @@ async function mostrarInventarioMiembro(miembro) {
     body.innerHTML = '<p class="sub">Este miembro no tiene objetos en su inventario</p>';
   } else {
     let html = `<div style="display:flex;justify-content:space-between;margin-bottom:1rem;">
-      <h4>Objetos en inventario (${items.length})</h4>
+      <h4>Objetos en inventario: ${totalObjetos}</h4>
       <button class="btn-delete" id="clear-inventory">Vaciar inventario</button>
     </div><div class="inventario-items">`;
 
@@ -614,18 +649,13 @@ async function mostrarInventarioMiembro(miembro) {
       // pctItem si existe en el item, tiene prioridad
       const pctItem = (itemMeta && (typeof itemMeta.pct === 'number')) ? itemMeta.pct : null;
       const effectivePct = (pctItem !== null) ? pctItem : pctRank;
-      // si effectivePct es 0/undefined, usar 1 para no dejar valor a 0 por defecto
       const valorUnit = Math.round((itemMeta.valorBase || 0) * (effectivePct || 1));
 
       totalValor += valorUnit * (it.qty || 0);
 
+      // ahora: papelera RESTA 1 unidad (sin confirmación). Ya no mostramos la X.
       html += `<div class="item-card" data-inv-id="${it.id}">
-        <!-- Botón para decrementar 1 (sin confirmación) -->
-        <button class="btn-decrement" data-id="${it.id}" title="Quitar 1">✖</button>
-
-        <!-- Botón eliminar completo (seguirá pidiendo confirmación como antes) -->
-        <button class="btn-delete item-delete" data-id="${it.id}" title="Eliminar objeto">🗑️</button>
-
+        <button class="btn-delete btn-decrement" data-id="${it.id}" title="Quitar 1">🗑️</button>
         <div class="item-image">📦</div>
         <strong>${escapeHtml(itemMeta.nombre || it.itemId)}</strong>
         <div class="small">Cantidad: <span class="item-qty" data-id="${it.id}">${it.qty}</span></div>
@@ -639,36 +669,25 @@ async function mostrarInventarioMiembro(miembro) {
     html += `</div>`;
     body.innerHTML = html;
 
-    // Handler: decrementar 1 unidad sin confirmación
+    // Handler: boton papelera ahora decrementa 1 (sin confirmación)
     body.querySelectorAll('.btn-decrement').forEach(btn => {
       btn.onclick = async (e) => {
         const invId = btn.dataset.id;
         try {
-          // Obtener la doc actual (por si cambió)
           const invRef = doc(db, 'inventories', invId);
           const invSnap = await getDoc(invRef);
           if (!invSnap.exists()) {
-            // ya no existe
-            const qtyEl = body.querySelector(`.item-qty[data-id="${invId}"]`);
-            if (qtyEl) qtyEl.textContent = '0';
+            mostrarInventarioMiembro(miembro); // refrescar
             return;
           }
           const currentQty = Number(invSnap.data().qty || 0);
           const newQty = currentQty - 1;
           if (newQty > 0) {
             await updateDoc(invRef, { qty: newQty, updatedAt: serverTimestamp() });
-            // Actualizar UI localmente para feedback instantáneo
-            const qtyEl = body.querySelector(`.item-qty[data-id="${invId}"]`);
-            if (qtyEl) qtyEl.textContent = String(newQty);
           } else {
-            // si llega a 0 o menos, borramos el documento
             await deleteDoc(invRef);
-            // quitar el card del DOM
-            const card = body.querySelector(`.item-card[data-inv-id="${invId}"]`);
-            if (card) card.remove();
           }
-          // (Opcional) recalc totalValor mostrando de nuevo el modal actual
-          // Simple y seguro: recargar la vista del inventario
+          // refrescar vista
           mostrarInventarioMiembro(miembro);
         } catch (err) {
           console.error('Error decrementando inventory:', err);
@@ -677,19 +696,9 @@ async function mostrarInventarioMiembro(miembro) {
       };
     });
 
-    // Handlers de borrado por item (con confirmación, como antes)
-    body.querySelectorAll('.item-delete').forEach(btn => {
-      btn.onclick = async (e) => {
-        const id = btn.dataset.id;
-        if (!confirm('¿Eliminar este objeto?')) return;
-        await deleteDoc(doc(db, 'inventories', id));
-        toast('Objeto eliminado del inventario');
-        // recalc/mostrar
-        mostrarInventarioMiembro(miembro);
-      };
-    });
+    // (Eliminamos el handler de la X; ya no existe.)
 
-    // Vaciar inventario
+    // Vaciar inventario (sigue con confirmación)
     const clearBtn = document.getElementById('clear-inventory');
     if (clearBtn) {
       clearBtn.onclick = async () => {
