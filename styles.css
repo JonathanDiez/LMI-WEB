@@ -911,13 +911,57 @@ select::placeholder {
 /* ---------------------------
    CUSTOM SELECT (trigger + lista)
    --------------------------- */
-.custom-select-wrapper { position: relative; display: block; width: 100%; margin-top: 0.25rem; }
-.custom-select-trigger { width: 100%; text-align: left; padding: .75rem 1rem; display:flex; align-items:center; justify-content:space-between; gap:.5rem; }
-.custom-select-trigger::after { content: '▾'; opacity: 0.6; }
-.custom-select-wrapper .sugerencias { position: absolute; z-index: 50; top: calc(100% + 6px); left: 0; right: 0; max-height: 260px; overflow-y: auto; }
-.custom-select-wrapper .sugerencias div { padding: .75rem 1rem; cursor: pointer; }
+.custom-select-wrapper {
+  position: relative;
+  display: block;
+  width: 100%;
+  margin-top: 0.25rem;
+}
 
-.custom-select-wrapper .sugerencias.active { display: block; }
+.custom-select-trigger {
+  width: 100%;
+  text-align: left;
+  padding: .75rem 1rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: .5rem;
+  cursor: pointer;
+}
+
+.custom-select-trigger::after {
+  content: '▾';
+  opacity: 0.6;
+}
+
+.custom-select-wrapper .sugerencias {
+  position: absolute;
+  z-index: 50;
+  top: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  max-height: 260px;
+  overflow-y: auto;
+  display: none;              /* <-- oculto por defecto */
+  background: var(--bg-sec, #1a1a1a);
+  border-radius: .75rem;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.3);
+}
+
+.custom-select-wrapper .sugerencias.active {
+  display: block;             /* <-- visible al tener .active */
+}
+
+.custom-select-wrapper .sugerencias div {
+  padding: .75rem 1rem;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.custom-select-wrapper .sugerencias div:hover {
+  background: var(--accent, #333);
+  color: #fff;
+}
 
 /* ---------------------------
    SCROLLBAR PERSONALIZADA
