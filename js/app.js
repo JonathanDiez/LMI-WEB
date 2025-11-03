@@ -242,79 +242,64 @@ function watchCollectionsRealtime() {
 // -----------------------------
 function createCustomSelectFromNative(selectEl) {
   if (!selectEl) return;
+  if (selectEl.dataset.customInitialized) return;
+  selectEl.dataset.customInitialized = '1';
 
-  // eliminar wrapper anterior si existía (re-render seguro)
-  const prev = selectEl.parentNode && selectEl.parentNode.querySelector('.custom-select-wrapper[data-for="' + selectEl.id + '"]');
-  if (prev) prev.remove();
+  // ocultar select nativo
+  selectEl.style.display = 'none';
 
   // wrapper + trigger + lista
   const wrapper = document.createElement('div');
   wrapper.className = 'custom-select-wrapper';
-  wrapper.dataset.for = selectEl.id || '';
 
   const trigger = document.createElement('button');
   trigger.type = 'button';
   trigger.className = 'custom-select-trigger btn-sec';
-  trigger.setAttribute('aria-haspopup', 'listbox');
-  trigger.setAttribute('aria-expanded', 'false');
-
-  const placeholderText = selectEl.querySelector('option[value=""]')?.textContent || '-- selecciona --';
-  const selectedOption = selectEl.options[selectEl.selectedIndex];
-  trigger.innerHTML = `<span class="custom-select-value">${escapeHtml(selectedOption && selectedOption.value !== '' ? selectedOption.text : placeholderText)}</span><span class="custom-select-caret">▾</span>`;
+  const initialText = (selectEl.selectedIndex >= 0 && selectEl.options[selectEl.selectedIndex])
+    ? selectEl.options[selectEl.selectedIndex].text
+    : (selectEl.querySelector('option[value=""]') ? selectEl.querySelector('option[value=""]').text : '-- selecciona --');
+  trigger.textContent = initialText;
 
   const list = document.createElement('div');
   list.className = 'sugerencias';
 
-  // poblar la lista desde el select nativo
+  // rellenar opciones (OMITIMOS placeholder value="")
   Array.from(selectEl.options).forEach(opt => {
+    if (opt.value === '') return; // <-- así no aparece en el listado
     const optDiv = document.createElement('div');
     optDiv.textContent = opt.text;
-    if (opt.value === '') optDiv.classList.add('disabled');
     optDiv.dataset.value = opt.value;
-    if (opt.dataset.nivel) optDiv.dataset.nivel = opt.dataset.nivel;
     optDiv.addEventListener('click', (ev) => {
       ev.stopPropagation();
-      if (opt.disabled || opt.value === '') return;
+      trigger.textContent = opt.text;
       selectEl.value = opt.value;
+      list.classList.remove('active');
+      // dispatch change
       const evChange = new Event('change', { bubbles: true });
       selectEl.dispatchEvent(evChange);
-      // actualizar trigger
-      trigger.querySelector('.custom-select-value').textContent = opt.text;
-      list.classList.remove('active');
     });
     list.appendChild(optDiv);
   });
 
-  // insertar wrapper justo después del select
+  // insertarlo tras el select nativo
   selectEl.parentNode.insertBefore(wrapper, selectEl.nextSibling);
   wrapper.appendChild(trigger);
   wrapper.appendChild(list);
 
-  // oculta visualmente el select, pero no lo elimines (accesibilidad)
-  selectEl.style.position = 'absolute';
-  selectEl.style.left = '-9999px';
-  selectEl.setAttribute('aria-hidden', 'true');
-
-  // toggle
+  // abrir/cerrar
   trigger.addEventListener('click', (ev) => {
     ev.stopPropagation();
-    // cerrar otras sugerencias
     document.querySelectorAll('.sugerencias.active').forEach(s => { if (s !== list) s.classList.remove('active'); });
     list.classList.toggle('active');
-    const expanded = list.classList.contains('active');
-    trigger.setAttribute('aria-expanded', String(expanded));
   });
 
-  // document click: cerrar lista (añadir solo una vez)
-  if (!document._customSelectDocBound) {
-    document.addEventListener('click', () => { document.querySelectorAll('.sugerencias.active').forEach(s => s.classList.remove('active')); });
-    document._customSelectDocBound = true;
-  }
+  // click fuera cierra
+  document.addEventListener('click', () => list.classList.remove('active'));
 
-  // si el select cambia por código, actualizar trigger
+  // si cambian el select por código -> actualizar trigger
   selectEl.addEventListener('change', () => {
     const cur = selectEl.options[selectEl.selectedIndex];
-    trigger.querySelector('.custom-select-value').textContent = cur ? cur.text : placeholderText;
+    trigger.textContent = cur ? cur.text : (selectEl.querySelector('option[value=""]') ? selectEl.querySelector('option[value=""]').text : '-- selecciona --');
   });
 }
 
@@ -329,21 +314,23 @@ function addItemRow() {
     ? catalogo.map(c => `<option value="${c.id}">${escapeHtml(c.nombre)} (${Number(c.valorBase || 0)})</option>`).join('')
     : `<option value="" disabled>— No hay items en catálogo —</option>`;
 
+  // añadimos un placeholder visible inicialmente (value="")
   row.innerHTML = `
-    <select class="sel-item">${optionsHtml}</select>
+    <select class="sel-item">
+      <option value="">-- Selecciona un objeto --</option>
+      ${optionsHtml}
+    </select>
     <input class="qty-item" type="number" min="1" value="1" />
     <button class="btn-remove-item" type="button" title="Quitar fila">✖</button>
   `;
-
   contenedorItems.appendChild(row);
-  row.querySelector('.btn-remove-item').onclick = () => row.remove();
-}
 
-// bind add item (asegurar single binding)
-const btnAdd = document.getElementById('btn-add-item');
-if (btnAdd && !btnAdd.dataset.addItemBound) {
-  btnAdd.addEventListener('click', addItemRow);
-  btnAdd.dataset.addItemBound = '1';
+  // inicializar select personalizado para esta fila
+  const sel = row.querySelector('.sel-item');
+  if (sel) createCustomSelectFromNative(sel);
+
+  // handler UI-only quitar fila
+  row.querySelector('.btn-remove-item').onclick = () => row.remove();
 }
 
 // -----------------------------
@@ -449,10 +436,12 @@ document.getElementById('form-registro').addEventListener('submit', async (e) =>
 function renderSelectRangos() {
   const select = document.getElementById('mi-rango');
   if (!select) return;
+  const rankEntries = Object.keys(ranks).map(k => {
+    const nivel = (ranks[k] && typeof ranks[k].nivel === 'number') ? ranks[k].nivel : 0;
+    return { id: k, nivel };
+  }).sort((a, b) => b.nivel - a.nivel);
 
-  const rankEntries = Object.keys(ranks).map(k => ({ id: k, nivel: (ranks[k] && typeof ranks[k].nivel === 'number') ? ranks[k].nivel : 0 })).sort((a,b) => b.nivel - a.nivel);
-
-  select.innerHTML = '<option value="">-- Selecciona un rango --</option>' + rankEntries.map(r => `<option value="${escapeHtml(r.id)}" data-nivel="${r.nivel}">${escapeHtml(r.id)}</option>`).join('');
+  select.innerHTML = '<option value="">-- Selecciona un rango --</option>' + rankEntries.map(r => `<option value="${escapeHtml(r.id)}">${escapeHtml(r.id)}</option>`).join('');
   createCustomSelectFromNative(select);
 }
 
