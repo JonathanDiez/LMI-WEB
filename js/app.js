@@ -22,7 +22,6 @@ import {
   query,
   where,
   onSnapshot,
-  orderBy,
   serverTimestamp
 } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-firestore.js";
 
@@ -32,7 +31,7 @@ import {
 const WORKER_URL = "https://flat-scene-48ab.ggoldenhhands.workers.dev/";
 
 /* --------------------------
-   Inicializar Firebase
+   Init Firebase
    -------------------------- */
 const app = initializeApp(FIREBASE_CONFIG);
 const auth = getAuth(app);
@@ -58,7 +57,7 @@ const sugerenciasMiembro = document.getElementById('sugerencias-miembro');
 const gridInventariosEl = document.getElementById('grid-inventarios');
 
 /* --------------------------
-   TOAST (pequeño)
+   Toast pequeño
    -------------------------- */
 function toast(msg, type = 'info', timeout = 3000) {
   const el = document.createElement('div');
@@ -82,22 +81,14 @@ let inventoriesLocal = {};
    -------------------------- */
 let unsubscribeFns = [];
 let isWatching = false;
-
-function addUnsub(fn) {
-  if (typeof fn === 'function') unsubscribeFns.push(fn);
-}
-
+function addUnsub(fn) { if (typeof fn === 'function') unsubscribeFns.push(fn); }
 function unsubscribeAll() {
-  try {
-    unsubscribeFns.forEach(f => { try { f(); } catch (e) { /* ignore */ }});
-  } finally {
-    unsubscribeFns = [];
-    isWatching = false;
-  }
+  try { unsubscribeFns.forEach(f => { try { f(); } catch (e) { /* ignore */ } }); }
+  finally { unsubscribeFns = []; isWatching = false; }
 }
 
 /* --------------------------
-   NAV sencillo
+   NAV (simple)
    -------------------------- */
 document.querySelectorAll('.nav-btn').forEach(btn => {
   btn.addEventListener('click', () => {
@@ -125,7 +116,7 @@ btnEntrar.addEventListener('click', async () => {
   }
 });
 
-btnLogout.addEventListener('click', async () => {
+async function doLogout() {
   try {
     unsubscribeAll();
     await new Promise(r => setTimeout(r, 200));
@@ -135,19 +126,9 @@ btnLogout.addEventListener('click', async () => {
     console.error('Error al cerrar sesión:', err);
     toast('Error cerrando sesión: ' + (err.message || err), 'error');
   }
-});
-
-btnLogoutSidebar.addEventListener('click', async () => {
-  try {
-    unsubscribeAll();
-    await new Promise(r => setTimeout(r, 200));
-    await signOut(auth);
-    toast('Sesión cerrada');
-  } catch (err) {
-    console.error('Error al cerrar sesión (sidebar):', err);
-    toast('Error cerrando sesión: ' + (err.message || err), 'error');
-  }
-});
+}
+btnLogout.addEventListener('click', doLogout);
+btnLogoutSidebar.addEventListener('click', doLogout);
 
 /* --------------------------
    onAuthStateChanged
@@ -156,8 +137,7 @@ onAuthStateChanged(auth, async (user) => {
   if (user) {
     try {
       const adminDoc = await getDoc(doc(db, 'admins', user.uid));
-      const isAdmin = adminDoc.exists();
-      if (!isAdmin) {
+      if (!adminDoc.exists()) {
         toast('No eres admin. Acceso restringido', 'error');
         unsubscribeAll();
         await signOut(auth);
@@ -198,7 +178,6 @@ async function cargarDatosIniciales() {
   profilesSnap.forEach(d => membersLocal.push({ id: d.id, ...d.data() }));
 
   inventoriesLocal = {};
-
   renderSelectRangos();
   renderCatalogo();
   renderMiembros();
@@ -213,55 +192,30 @@ async function cargarDatosIniciales() {
 function watchCollectionsRealtime() {
   if (isWatching) return;
   if (!auth.currentUser) return;
-
   isWatching = true;
   unsubscribeAll();
 
   try {
     const unsubItems = onSnapshot(collection(db, 'items'),
-      (snap) => {
-        catalogo = [];
-        snap.forEach(d => catalogo.push({ id: d.id, ...d.data() }));
-        renderCatalogo();
-      },
-      (err) => {
-        if (err?.code === 'permission-denied' && !auth.currentUser) return;
-        console.error('[realtime] items error:', err);
-        toast('Error realtime (items): ' + (err.code || err.message || err), 'error', 6000);
-      }
+      snap => { catalogo = []; snap.forEach(d => catalogo.push({ id: d.id, ...d.data() })); renderCatalogo(); },
+      err => { if (!(err?.code === 'permission-denied' && !auth.currentUser)) toast('Error realtime (items): ' + (err.code || err.message || err), 'error', 6000); }
     );
     addUnsub(unsubItems);
 
     const unsubRanks = onSnapshot(collection(db, 'ranks'),
-      (snap) => {
-        ranks = {};
-        snap.forEach(d => ranks[d.id] = d.data());
-        renderSelectRangos();
-      },
-      (err) => {
-        if (err?.code === 'permission-denied' && !auth.currentUser) return;
-        console.error('[realtime] ranks error:', err);
-        toast('Error realtime (ranks): ' + (err.code || err.message || err), 'error', 6000);
-      }
+      snap => { ranks = {}; snap.forEach(d => ranks[d.id] = d.data()); renderSelectRangos(); renderMiembros(); },
+      err => { if (!(err?.code === 'permission-denied' && !auth.currentUser)) toast('Error realtime (ranks): ' + (err.code || err.message || err), 'error', 6000); }
     );
     addUnsub(unsubRanks);
 
     const unsubProfiles = onSnapshot(collection(db, 'profiles'),
-      (snap) => {
-        membersLocal = [];
-        snap.forEach(d => membersLocal.push({ id: d.id, ...d.data() }));
-        renderMiembros();
-      },
-      (err) => {
-        if (err?.code === 'permission-denied' && !auth.currentUser) return;
-        console.error('[realtime] profiles error:', err);
-        toast('Error realtime (profiles): ' + (err.code || err.message || err), 'error', 6000);
-      }
+      snap => { membersLocal = []; snap.forEach(d => membersLocal.push({ id: d.id, ...d.data() })); renderMiembros(); },
+      err => { if (!(err?.code === 'permission-denied' && !auth.currentUser)) toast('Error realtime (profiles): ' + (err.code || err.message || err), 'error', 6000); }
     );
     addUnsub(unsubProfiles);
 
     const unsubInventories = onSnapshot(collection(db, 'inventories'),
-      (snap) => {
+      snap => {
         inventoriesLocal = {};
         snap.forEach(d => {
           const data = d.data();
@@ -269,11 +223,7 @@ function watchCollectionsRealtime() {
           inventoriesLocal[data.userId].push({ id: d.id, ...data });
         });
       },
-      (err) => {
-        if (err?.code === 'permission-denied' && !auth.currentUser) return;
-        console.error('[realtime] inventories error:', err);
-        toast('Error realtime (inventories): ' + (err.code || err.message || err), 'error', 6000);
-      }
+      err => { if (!(err?.code === 'permission-denied' && !auth.currentUser)) toast('Error realtime (inventories): ' + (err.code || err.message || err), 'error', 6000); }
     );
     addUnsub(unsubInventories);
 
@@ -290,15 +240,11 @@ function watchCollectionsRealtime() {
 function addItemRow() {
   const row = document.createElement('div');
   row.className = 'item-row';
-
   const optionsHtml = catalogo.length > 0
     ? catalogo.map(c => `<option value="${c.id}">${escapeHtml(c.nombre)} (${Number(c.valorBase || 0)})</option>`).join('')
     : `<option value="" disabled>— No hay items en catálogo —</option>`;
-
   row.innerHTML = `
-    <select class="sel-item">
-      ${optionsHtml}
-    </select>
+    <select class="sel-item">${optionsHtml}</select>
     <input class="qty-item" type="number" min="1" value="1" />
     <button class="btn-delete btn-remove-item" type="button">🗑️</button>
   `;
@@ -312,7 +258,6 @@ document.getElementById('btn-add-item').addEventListener('click', () => addItemR
    -------------------------- */
 document.getElementById('form-registro').addEventListener('submit', async (e) => {
   e.preventDefault();
-
   const memberName = buscarMiembroInput.value.trim();
   const member = membersLocal.find(m => (m.displayName === memberName) || (m.username === memberName));
   if (!member) return toast('Selecciona un miembro válido', 'error');
@@ -327,17 +272,10 @@ document.getElementById('form-registro').addEventListener('submit', async (e) =>
     const id = r.querySelector('.sel-item').value;
     const qty = Number(r.querySelector('.qty-item').value) || 0;
     const item = catalogo.find(c => c.id === id) || {};
-    return {
-      itemId: id,
-      nombre: item.nombre || id,
-      qty,
-      valorBase: item.valorBase || 0,
-      pct: (typeof item.pct === 'number') ? item.pct : null
-    };
+    return { itemId: id, nombre: item.nombre || id, qty, valorBase: item.valorBase || 0, pct: (typeof item.pct === 'number') ? item.pct : null };
   });
 
   try {
-    // 1) crear registry en Firestore con processed:false
     const registryRef = await addDoc(collection(db, 'registries'), {
       authorId: auth.currentUser.uid,
       authorEmail: auth.currentUser.email,
@@ -349,7 +287,7 @@ document.getElementById('form-registro').addEventListener('submit', async (e) =>
       processed: false
     });
 
-    // 2) actualizar inventarios (upsert)
+    // actualizar inventarios (upsert)
     for (const it of items) {
       const q = query(collection(db, 'inventories'), where('userId', '==', member.id), where('itemId', '==', it.itemId));
       const snap = await getDocs(q);
@@ -358,20 +296,13 @@ document.getElementById('form-registro').addEventListener('submit', async (e) =>
         const newQty = (existingDoc.data().qty || 0) + it.qty;
         await updateDoc(existingDoc.ref, { qty: newQty, updatedAt: serverTimestamp() });
       } else {
-        await addDoc(collection(db, 'inventories'), {
-          userId: member.id,
-          itemId: it.itemId,
-          qty: it.qty,
-          createdAt: serverTimestamp(),
-          updatedAt: serverTimestamp()
-        });
+        await addDoc(collection(db, 'inventories'), { userId: member.id, itemId: it.itemId, qty: it.qty, createdAt: serverTimestamp(), updatedAt: serverTimestamp() });
       }
     }
 
-    // 3) preparar resumen del loot y calcular total
+    // preparar resumen + total
     const rango = ranks[member.rankId] || {};
     const pctRank = member.tiene500 ? (rango.pct500 || rango.pct || 0) : (rango.pct || 0);
-
     let totalValor = 0;
     const lootParts = [];
     for (const it of items) {
@@ -383,54 +314,27 @@ document.getElementById('form-registro').addEventListener('submit', async (e) =>
     }
     const lootSummary = lootParts.join(', ');
 
-    // 4) enviar al Worker con authorName (si existe en admins/{uid})
+    // enviar al Worker (si falla, seguimos; firestore queda creado)
     try {
       let authorName = auth.currentUser.email || auth.currentUser.uid;
       try {
         const admSnap = await getDoc(doc(db, 'admins', auth.currentUser.uid));
-        if (admSnap.exists() && admSnap.data().displayName) {
-          authorName = admSnap.data().displayName;
-        }
+        if (admSnap.exists() && admSnap.data().displayName) authorName = admSnap.data().displayName;
       } catch (e) { /* ignore */ }
 
       const idToken = await getIdToken(auth.currentUser, true);
-      const payload = {
-        registryId: registryRef.id,
-        authorId: auth.currentUser.uid,
-        authorEmail: auth.currentUser.email,
-        authorName,
-        memberId: member.id,
-        memberName: member.displayName || member.username || member.id,
-        actividad,
-        items,
-        lootSummary,
-        totalValor,
-        createdAt: new Date().toISOString()
-      };
+      const payload = { registryId: registryRef.id, authorId: auth.currentUser.uid, authorEmail: auth.currentUser.email, authorName, memberId: member.id, memberName: member.displayName || member.username || member.id, actividad, items, lootSummary, totalValor, createdAt: new Date().toISOString() };
 
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 10000);
-      const resp = await fetch(WORKER_URL, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer ' + idToken
-        },
-        body: JSON.stringify(payload),
-        signal: controller.signal
-      });
+      const resp = await fetch(WORKER_URL, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + idToken }, body: JSON.stringify(payload), signal: controller.signal });
       clearTimeout(timeout);
-
-      if (!resp.ok) {
-        const text = await resp.text().catch(() => '');
-        console.error('Worker error:', resp.status, text);
-        toast('Worker error: ' + (resp.statusText || resp.status) + (text ? ' — ' + text : ''), 'error', 6000);
-      } else {
-        await updateDoc(registryRef, { processed: true, processedAt: serverTimestamp() });
-        toast('Registro guardado y enviado a Discord (instantáneo).');
+      if (resp && resp.ok) await updateDoc(registryRef, { processed: true, processedAt: serverTimestamp() });
+      else {
+        const text = resp ? await resp.text().catch(()=>'') : '';
+        toast('Worker error: ' + (resp?.statusText || resp?.status) + (text ? ' — ' + text : ''), 'error', 6000);
       }
     } catch (err) {
-      console.error('Error enviando al worker:', err);
       toast('Error enviando a Discord: ' + (err.message || err), 'error', 6000);
     }
 
@@ -452,15 +356,11 @@ document.getElementById('form-registro').addEventListener('submit', async (e) =>
 function renderSelectRangos() {
   const select = document.getElementById('mi-rango');
   if (!select) return;
-
-  // convertir el objeto ranks en array con {id, nivel} y ordenar por nivel desc
   const rankEntries = Object.keys(ranks).map(k => {
     const nivel = (ranks[k] && typeof ranks[k].nivel === 'number') ? ranks[k].nivel : 0;
     return { id: k, nivel };
-  }).sort((a, b) => b.nivel - a.nivel); // del 9 -> 1
-
-  select.innerHTML = '<option value="">-- Selecciona un rango --</option>' +
-    rankEntries.map(r => `<option value="${escapeHtml(r.id)}">${escapeHtml(r.id)}</option>`).join('');
+  }).sort((a, b) => b.nivel - a.nivel);
+  select.innerHTML = '<option value="">-- Selecciona un rango --</option>' + rankEntries.map(r => `<option value="${escapeHtml(r.id)}">${escapeHtml(r.id)}</option>`).join('');
 }
 
 function renderCatalogo() {
@@ -481,13 +381,8 @@ function renderCatalogo() {
     `;
     el.querySelector('.btn-delete').onclick = async () => {
       if (!confirm('¿Borrar objeto del catálogo?')) return;
-      try {
-        await deleteDoc(doc(db, 'items', c.id));
-        toast('Objeto eliminado');
-      } catch (err) {
-        console.error('Error borrando item:', err);
-        toast('Error borrando item: ' + (err.message || err), 'error');
-      }
+      try { await deleteDoc(doc(db, 'items', c.id)); toast('Objeto eliminado'); }
+      catch (err) { console.error('Error borrando item:', err); toast('Error borrando item: ' + (err.message || err), 'error'); }
     };
     lista.appendChild(el);
   });
@@ -498,7 +393,14 @@ function renderMiembros() {
   if (!grid) return;
   grid.innerHTML = '';
 
-  membersLocal.forEach(m => {
+  // ordenar miembros por nivel de rango (9->1). Si no hay nivel, van abajo.
+  const membersSorted = [...membersLocal].sort((a, b) => {
+    const aNivel = (ranks[a.rankId] && typeof ranks[a.rankId].nivel === 'number') ? ranks[a.rankId].nivel : 0;
+    const bNivel = (ranks[b.rankId] && typeof ranks[b.rankId].nivel === 'number') ? ranks[b.rankId].nivel : 0;
+    return bNivel - aNivel;
+  });
+
+  membersSorted.forEach(m => {
     const rankName = m.rankId || '—';
     const rankNivel = (ranks[rankName] && typeof ranks[rankName].nivel === 'number') ? ranks[rankName].nivel : 0;
     const nivelClass = rankNivel ? `rango-${rankNivel}` : '';
@@ -508,35 +410,25 @@ function renderMiembros() {
     el.innerHTML = `
       <div class="miembro-info">
         <strong>${escapeHtml(m.displayName || m.username || m.id)}</strong>
-        <div class="small">Rango: <span class="sr-only">${escapeHtml(rankName)}</span></div>
+        <div class="small"><span class="sr-only">${escapeHtml(rankName)}</span></div>
       </div>
-
       <div class="miembro-actions" style="display:flex;gap:0.5rem;align-items:center;">
         <span class="rango-badge ${nivelClass}">${escapeHtml(rankName)}</span>
         <button class="btn-delete miembro-delete" data-id="${m.id}" title="Eliminar miembro">🗑️</button>
       </div>
     `;
 
-    // abrir inventario si no clicas en delete
+    // abrir inventario al click salvo que pulses delete
     el.onclick = (e) => {
-      if (e.target && (e.target.closest('.miembro-delete') || e.target.classList.contains('miembro-delete'))) {
-        // handled below
-        return;
-      }
+      if (e.target && (e.target.closest('.miembro-delete') || e.target.classList.contains('miembro-delete'))) return;
       mostrarInventarioMiembro(m);
     };
 
-    // delete handler
     el.querySelector('.miembro-delete').onclick = async (e) => {
       e.stopPropagation();
       if (!confirm('¿Eliminar miembro ' + (m.displayName || m.username) + '?')) return;
-      try {
-        await deleteDoc(doc(db, 'profiles', m.id));
-        toast('Miembro eliminado');
-      } catch (err) {
-        console.error('Error eliminando miembro:', err);
-        toast('Error eliminando miembro: ' + (err.message || err), 'error');
-      }
+      try { await deleteDoc(doc(db, 'profiles', m.id)); toast('Miembro eliminado'); }
+      catch (err) { console.error('Error eliminando miembro:', err); toast('Error eliminando miembro: ' + (err.message || err), 'error'); }
     };
 
     grid.appendChild(el);
@@ -544,42 +436,29 @@ function renderMiembros() {
 }
 
 /* --------------------------
-   SUGERENCIAS MIEMBRO
+   SUGERENCIAS MIEMBRO (typeahead)
    -------------------------- */
 buscarMiembroInput.addEventListener('input', () => {
   const q = buscarMiembroInput.value.trim().toLowerCase();
   sugerenciasMiembro.innerHTML = '';
-  if (!q) {
-    sugerenciasMiembro.classList.remove('active');
-    return;
-  }
+  if (!q) { sugerenciasMiembro.classList.remove('active'); return; }
   const matches = membersLocal.filter(m => ((m.displayName || '').toLowerCase().includes(q) || (m.username || '').toLowerCase().includes(q))).slice(0, 8);
   if (matches.length > 0) {
     sugerenciasMiembro.classList.add('active');
     matches.forEach(m => {
       const div = document.createElement('div');
       div.textContent = m.displayName || m.username;
-      div.onclick = () => {
-        buscarMiembroInput.value = m.displayName || m.username;
-        buscarMiembroInput.dataset.id = m.id;
-        sugerenciasMiembro.classList.remove('active');
-        sugerenciasMiembro.innerHTML = '';
-      };
+      div.onclick = () => { buscarMiembroInput.value = m.displayName || m.username; buscarMiembroInput.dataset.id = m.id; sugerenciasMiembro.classList.remove('active'); sugerenciasMiembro.innerHTML = ''; };
       sugerenciasMiembro.appendChild(div);
     });
   } else {
     sugerenciasMiembro.classList.remove('active');
   }
 });
-
-document.addEventListener('click', (e) => {
-  if (!buscarMiembroInput.contains(e.target) && !sugerenciasMiembro.contains(e.target)) {
-    sugerenciasMiembro.classList.remove('active');
-  }
-});
+document.addEventListener('click', (e) => { if (!buscarMiembroInput.contains(e.target) && !sugerenciasMiembro.contains(e.target)) sugerenciasMiembro.classList.remove('active'); });
 
 /* --------------------------
-   MODAL INVENTARIO (mostrar + decrementar 1 sin confirm)
+   MODAL INVENTARIO (mostrar + decrementar 1)
    -------------------------- */
 const modal = document.getElementById('modal-inventario');
 const modalClose = document.getElementById('modal-close');
@@ -615,24 +494,21 @@ async function mostrarInventarioMiembro(miembro) {
       totalValor += valorUnit * (it.qty || 0);
 
       html += `<div class="item-card" data-inv-id="${it.id}">
-        <div class="item-image">
-          <!-- boton de eliminar encima de la imagen -->
-          <button class="item-delete" data-id="${it.id}" title="Quitar 1">✕</button>
+        <div class="item-image" style="position:relative;">
+          <button class="item-delete" data-id="${it.id}" title="Quitar 1" style="position:absolute;top:6px;right:6px;width:28px;height:28px;border-radius:6px;padding:0;">✕</button>
           <div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;font-size:2rem;">📦</div>
         </div>
         <strong>${escapeHtml(itemMeta.nombre || it.itemId)}</strong>
         <div class="small">Cantidad: <span class="item-qty" data-id="${it.id}">${it.qty}</span></div>
         <div class="small">Valor unit.: ${valorUnit}${ (pctItem !== null) ? ` • pct item: ${Math.round(pctItem*100)}%` : ` • pct rango: ${Math.round((pctRank||0)*100)}%` }</div>
-        <div style="color: var(--accent); font-weight: 600; margin-top: 0.5rem;">
-          ${valorUnit * it.qty}
-        </div>
+        <div style="color: var(--accent); font-weight: 600; margin-top: 0.5rem;">${valorUnit * it.qty}</div>
       </div>`;
     }
 
     html += `</div>`;
     body.innerHTML = html;
 
-    // <-- Inserta/pega aquí el handler para los botones de borrar 1 unidad
+    // handler: decrementar 1 unidad (botón de la X sobre la imagen)
     body.querySelectorAll('.item-delete').forEach(btn => {
       btn.onclick = async (e) => {
         e.stopPropagation();
@@ -640,19 +516,11 @@ async function mostrarInventarioMiembro(miembro) {
         try {
           const invRef = doc(db, 'inventories', invId);
           const invSnap = await getDoc(invRef);
-          if (!invSnap.exists()) {
-            // si ya no existe refrescamos la vista
-            mostrarInventarioMiembro(miembro);
-            return;
-          }
+          if (!invSnap.exists()) { mostrarInventarioMiembro(miembro); return; }
           const currentQty = Number(invSnap.data().qty || 0);
           const newQty = currentQty - 1;
-          if (newQty > 0) {
-            await updateDoc(invRef, { qty: newQty, updatedAt: serverTimestamp() });
-          } else {
-            await deleteDoc(invRef);
-          }
-          // refrescar la ventana modal para reflejar cambios
+          if (newQty > 0) await updateDoc(invRef, { qty: newQty, updatedAt: serverTimestamp() });
+          else await deleteDoc(invRef);
           mostrarInventarioMiembro(miembro);
         } catch (err) {
           console.error('Error decrementando inventory:', err);
@@ -661,18 +529,7 @@ async function mostrarInventarioMiembro(miembro) {
       };
     });
 
-    // Vaciar inventario (botón existente)
-    const clearBtn = document.getElementById('clear-inventory');
-    if (clearBtn) {
-      clearBtn.onclick = async () => {
-        if (!confirm('¿Vaciar todo el inventario de ' + (miembro.displayName || miembro.username) + '?')) return;
-        const snapClear = await getDocs(query(collection(db, 'inventories'), where('userId', '==', miembro.id)));
-        for (const d of snapClear.docs) await deleteDoc(d.ref);
-        toast('Inventario vaciado');
-        mostrarInventarioMiembro(miembro);
-      };
-    }
-
+    // handler: vaciar inventario
     const clearBtn = document.getElementById('clear-inventory');
     if (clearBtn) {
       clearBtn.onclick = async () => {
@@ -699,14 +556,8 @@ document.getElementById('btn-crear-miembro').addEventListener('click', async () 
   const id = nombre.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-_]/g, '');
   const rango = document.getElementById('mi-rango').value;
   const tiene500 = document.getElementById('mi-500').checked;
-  try {
-    await setDoc(doc(db, 'profiles', id), { displayName: nombre, username: id, rankId: rango, tiene500 });
-    toast('Miembro creado: ' + nombre);
-    document.getElementById('mi-nombre').value = '';
-  } catch (err) {
-    console.error('Error creando miembro:', err);
-    toast('Error creando miembro: ' + (err.message || err), 'error');
-  }
+  try { await setDoc(doc(db, 'profiles', id), { displayName: nombre, username: id, rankId: rango, tiene500 }); toast('Miembro creado: ' + nombre); document.getElementById('mi-nombre').value = ''; }
+  catch (err) { console.error('Error creando miembro:', err); toast('Error creando miembro: ' + (err.message || err), 'error'); }
 });
 
 document.getElementById('btn-crear-catalogo').addEventListener('click', async () => {
@@ -722,28 +573,19 @@ document.getElementById('btn-crear-catalogo').addEventListener('click', async ()
   }
   if (!nombre || valor <= 0) return toast('Nombre y valor válidos requeridos', 'error');
   const id = nombre.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-_]/g, '');
-  try {
-    await setDoc(doc(db, 'items', id), { nombre, valorBase: valor, pagable, pct });
-    toast('Objeto agregado al catálogo');
-    document.getElementById('cat-nombre').value = '';
-    document.getElementById('cat-valor').value = '';
-    if (document.getElementById('cat-pct')) document.getElementById('cat-pct').value = '';
-    document.getElementById('cat-pagable').checked = true;
-  } catch (err) {
-    console.error('Error creando item:', err);
-    toast('Error creando item: ' + (err.message || err), 'error');
-  }
+  try { await setDoc(doc(db, 'items', id), { nombre, valorBase: valor, pagable, pct }); toast('Objeto agregado al catálogo'); document.getElementById('cat-nombre').value = ''; document.getElementById('cat-valor').value = ''; if (document.getElementById('cat-pct')) document.getElementById('cat-pct').value = ''; document.getElementById('cat-pagable').checked = true; }
+  catch (err) { console.error('Error creando item:', err); toast('Error creando item: ' + (err.message || err), 'error'); }
 });
 
 /* --------------------------
-   Buscador inventarios
+   Buscador inventarios - muestra todos si está vacío
    -------------------------- */
 document.getElementById('buscador-inventario').addEventListener('input', (e) => {
   const q = e.target.value.trim().toLowerCase();
   const grid = document.getElementById('grid-inventarios');
   grid.innerHTML = '';
 
-  // Si vacío: mostrar todos los miembros
+  // vacío -> listar todos los miembros
   if (!q) {
     membersLocal.forEach(m => {
       const items = inventoriesLocal[m.id] || [];
@@ -751,18 +593,14 @@ document.getElementById('buscador-inventario').addEventListener('input', (e) => 
       const card = document.createElement('div');
       card.className = 'inventario-card';
       card.style.cursor = 'pointer';
-      card.innerHTML = `
-        <h4>${escapeHtml(m.displayName || m.username)}</h4>
-        <p class="small">Rango: ${escapeHtml(m.rankId || '—')}</p>
-        <p class="small" style="margin-top: 0.5rem;">Objetos: ${totalItems}</p>
-      `;
+      card.innerHTML = `<h4>${escapeHtml(m.displayName || m.username)}</h4><p class="small">Rango: ${escapeHtml(m.rankId || '—')}</p><p class="small" style="margin-top:0.5rem;">Objetos: ${totalItems}</p>`;
       card.onclick = () => mostrarInventarioMiembro(m);
       grid.appendChild(card);
     });
     return;
   }
 
-  // Si hay q: primero buscar miembros cuyo nombre ó username EMPIECEN por q
+  // buscar miembros cuyo nombre o username empiecen por q
   const miembroMatch = membersLocal.filter(m => {
     const name = (m.displayName || m.username || '').toLowerCase();
     return name.startsWith(q);
@@ -775,18 +613,14 @@ document.getElementById('buscador-inventario').addEventListener('input', (e) => 
       const card = document.createElement('div');
       card.className = 'inventario-card';
       card.style.cursor = 'pointer';
-      card.innerHTML = `
-        <h4>${escapeHtml(m.displayName || m.username)}</h4>
-        <p class="small">Rango: ${escapeHtml(m.rankId || '—')}</p>
-        <p class="small" style="margin-top: 0.5rem;">Objetos: ${totalItems}</p>
-      `;
+      card.innerHTML = `<h4>${escapeHtml(m.displayName || m.username)}</h4><p class="small">Rango: ${escapeHtml(m.rankId || '—')}</p><p class="small" style="margin-top:0.5rem;">Objetos: ${totalItems}</p>`;
       card.onclick = () => mostrarInventarioMiembro(m);
       grid.appendChild(card);
     });
     return;
   }
 
-  // Si no hay miembros que empiecen por q, buscar por objeto (incluye)
+  // si no hay miembros que empiecen por q, buscar por objeto (contains)
   const objetoMatch = catalogo.filter(c => c.nombre.toLowerCase().includes(q));
   if (objetoMatch.length > 0) {
     objetoMatch.forEach(obj => {
@@ -797,13 +631,7 @@ document.getElementById('buscador-inventario').addEventListener('input', (e) => 
       if (poseedores.length > 0) {
         const card = document.createElement('div');
         card.className = 'inventario-card';
-        card.innerHTML = `
-          <h4>📦 ${escapeHtml(obj.nombre)}</h4>
-          <p class="small">Este objeto lo tienen:</p>
-          <div style="margin-top: 0.75rem;">
-            ${poseedores.map(m => `<div class="small" style="margin-top: 0.25rem;">• ${escapeHtml(m.displayName || m.username)}</div>`).join('')}
-          </div>
-        `;
+        card.innerHTML = `<h4>📦 ${escapeHtml(obj.nombre)}</h4><p class="small">Este objeto lo tienen:</p><div style="margin-top:0.75rem;">${poseedores.map(m => `<div class="small" style="margin-top:0.25rem;">• ${escapeHtml(m.displayName || m.username)}</div>`).join('')}</div>`;
         grid.appendChild(card);
       }
     });
@@ -819,12 +647,7 @@ document.getElementById('buscador-inventario').addEventListener('input', (e) => 
    -------------------------- */
 function escapeHtml(str) {
   if (!str) return '';
-  return String(str)
-    .replaceAll('&', '&amp;')
-    .replaceAll('<', '&lt;')
-    .replaceAll('>', '&gt;')
-    .replaceAll('"', '&quot;')
-    .replaceAll("'", "&#039;");
+  return String(str).replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;').replaceAll("'", "&#039;");
 }
 
 /* --------------------------
