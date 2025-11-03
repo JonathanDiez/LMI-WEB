@@ -25,6 +25,13 @@ import {
   serverTimestamp
 } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-firestore.js";
 
+const sugerenciasMiembroEl = document.getElementById('sugerencias-miembro');
+if (sugerenciasMiembroEl) {
+  sugerenciasMiembroEl.classList.remove('active');
+  // opcionalmente limpiar su contenido ahora
+  sugerenciasMiembroEl.innerHTML = '';
+}
+
 /* --------------------------
    CONFIG - pon aquí tu Worker URL
    -------------------------- */
