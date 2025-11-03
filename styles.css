@@ -115,8 +115,9 @@ body {
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 36px;
-    height: 36px;
+    width: 85px;
+    font-weight: bold;
+    height: 40px;
     transition: all 0.2s;
 }
 
