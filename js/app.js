@@ -186,6 +186,89 @@ async function cargarDatosIniciales() {
   document.getElementById('grid-inventarios').innerHTML = '<p class="sub">Escribe un nombre de usuario o objeto para buscar</p>';
 }
 
+function createCustomSelectFromNative(selectEl) {
+  if (!selectEl) return;
+
+  // si ya hemos inicializado, no hacer nada
+  if (selectEl.dataset.customInitialized) return;
+  selectEl.dataset.customInitialized = '1';
+
+  // ocultar select nativo pero dejar su funcionalidad
+  selectEl.style.display = 'none';
+
+  // wrapper + trigger + lista
+  const wrapper = document.createElement('div');
+  wrapper.className = 'custom-select-wrapper';
+
+  const trigger = document.createElement('button');
+  trigger.type = 'button';
+  trigger.className = 'custom-select-trigger btn-sec';
+  const initialText = (selectEl.selectedIndex >= 0 && selectEl.options[selectEl.selectedIndex])
+    ? selectEl.options[selectEl.selectedIndex].text
+    : '-- selecciona --';
+  trigger.textContent = initialText;
+
+  const list = document.createElement('div');
+  list.className = 'sugerencias';
+
+  // rellenar opciones
+  Array.from(selectEl.options).forEach(opt => {
+    const optDiv = document.createElement('div');
+    optDiv.textContent = opt.text;
+    optDiv.dataset.value = opt.value;
+    optDiv.addEventListener('click', (ev) => {
+      ev.stopPropagation();
+      // actualizar trigger visual y select nativo
+      trigger.textContent = opt.text;
+      selectEl.value = opt.value;
+      // cerrar lista
+      list.classList.remove('active');
+      // disparar event change en el select para que el resto del sistema lo detecte
+      const evChange = new Event('change', { bubbles: true });
+      selectEl.dispatchEvent(evChange);
+    });
+    list.appendChild(optDiv);
+  });
+
+  // insertar en DOM justo después del select
+  selectEl.parentNode.insertBefore(wrapper, selectEl.nextSibling);
+  wrapper.appendChild(trigger);
+  wrapper.appendChild(list);
+
+  // handlers
+  trigger.addEventListener('click', (ev) => {
+    ev.stopPropagation();
+    // cerrar cualquier otra sugerencia abierta (por si)
+    document.querySelectorAll('.sugerencias.active').forEach(s => {
+      if (s !== list) s.classList.remove('active');
+    });
+    list.classList.toggle('active');
+  });
+
+  // cerrar al click fuera
+  document.addEventListener('click', () => list.classList.remove('active'));
+
+  // si el select cambia por código, actualizar trigger
+  selectEl.addEventListener('change', () => {
+    const cur = selectEl.options[selectEl.selectedIndex];
+    trigger.textContent = cur ? cur.text : '-- selecciona --';
+  });
+}
+
+// Inicializar para actividad y rango (intenta hacerlo tras cargar datos si las opciones vienen desde Firestore)
+document.addEventListener('DOMContentLoaded', () => {
+  // si tu select se rellena desde Firestore después, llama a createCustomSelectFromNative(...) tras renderizarlo
+  const actividadSel = document.getElementById('actividad');
+  const rangoSel = document.getElementById('mi-rango');
+
+  // Si las opciones ya están, inicializa ya
+  if (actividadSel) createCustomSelectFromNative(actividadSel);
+  if (rangoSel) createCustomSelectFromNative(rangoSel);
+
+  // Si tu renderSelectRangos() actualiza el select dinámicamente, asegúrate de reinicializar después de renderizar:
+  // ejemplo: dentro de renderSelectRangos() tras set innerHTML -> createCustomSelectFromNative(document.getElementById('mi-rango'));
+});
+
 /* --------------------------
    Realtime watchers
    -------------------------- */
