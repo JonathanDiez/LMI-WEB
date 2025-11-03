@@ -240,18 +240,30 @@ function watchCollectionsRealtime() {
 function addItemRow() {
   const row = document.createElement('div');
   row.className = 'item-row';
+
   const optionsHtml = catalogo.length > 0
     ? catalogo.map(c => `<option value="${c.id}">${escapeHtml(c.nombre)} (${Number(c.valorBase || 0)})</option>`).join('')
     : `<option value="" disabled>— No hay items en catálogo —</option>`;
+
   row.innerHTML = `
-    <select class="sel-item">${optionsHtml}</select>
+    <select class="sel-item">
+      ${optionsHtml}
+    </select>
     <input class="qty-item" type="number" min="1" value="1" />
-    <button class="btn-delete btn-remove-item" type="button">🗑️</button>
+    <!-- botón pequeño para borrar fila (solo en UI) -->
+    <button class="btn-remove-item" type="button" title="Quitar fila">✖</button>
   `;
   contenedorItems.appendChild(row);
+
+  // handler: quitar la fila del DOM (no toca Firestore)
   row.querySelector('.btn-remove-item').onclick = () => row.remove();
 }
-document.getElementById('btn-add-item').addEventListener('click', () => addItemRow());
+
+const btnAdd = document.getElementById('btn-add-item');
+if (btnAdd && !btnAdd.dataset.addItemBound) {
+  btnAdd.addEventListener('click', addItemRow);
+  btnAdd.dataset.addItemBound = '1';
+}
 
 /* --------------------------
    Submit formulario - crear registry + actualizar inventarios + enviar Worker
