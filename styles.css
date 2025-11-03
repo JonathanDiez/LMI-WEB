@@ -412,8 +412,9 @@ select::placeholder {
   display:flex; 
   justify-content:space-between; 
   align-items:center; 
-  margin-bottom:0.5rem; /* más compacto */
+  margin-bottom:-0.5rem; /* más compacto */
 }
+
 .items-container { 
   display:flex; 
   flex-direction:column; 
