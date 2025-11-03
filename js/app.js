@@ -497,23 +497,37 @@ function renderMiembros() {
   const grid = document.getElementById('grid-miembros');
   if (!grid) return;
   grid.innerHTML = '';
+
   membersLocal.forEach(m => {
+    const rankName = m.rankId || '—';
+    const rankNivel = (ranks[rankName] && typeof ranks[rankName].nivel === 'number') ? ranks[rankName].nivel : 0;
+    const nivelClass = rankNivel ? `rango-${rankNivel}` : '';
+
     const el = document.createElement('div');
     el.className = 'miembro-card';
     el.innerHTML = `
       <div class="miembro-info">
         <strong>${escapeHtml(m.displayName || m.username || m.id)}</strong>
-        <div class="small">Rango: ${escapeHtml(m.rankId || '—')}</div>
-        ${m.tiene500 ? '<span class="small" style="color: var(--success)">✅ 500 aportaciones</span>' : ''}
+        <div class="small">Rango: <span class="sr-only">${escapeHtml(rankName)}</span></div>
       </div>
-      <button class="btn-delete" data-id="${m.id}">🗑️</button>
+
+      <div class="miembro-actions" style="display:flex;gap:0.5rem;align-items:center;">
+        <span class="rango-badge ${nivelClass}">${escapeHtml(rankName)}</span>
+        <button class="btn-delete miembro-delete" data-id="${m.id}" title="Eliminar miembro">🗑️</button>
+      </div>
     `;
+
+    // abrir inventario si no clicas en delete
     el.onclick = (e) => {
-      if (!e.target.classList.contains('btn-delete')) {
-        mostrarInventarioMiembro(m);
+      if (e.target && (e.target.closest('.miembro-delete') || e.target.classList.contains('miembro-delete'))) {
+        // handled below
+        return;
       }
+      mostrarInventarioMiembro(m);
     };
-    el.querySelector('.btn-delete').onclick = async (e) => {
+
+    // delete handler
+    el.querySelector('.miembro-delete').onclick = async (e) => {
       e.stopPropagation();
       if (!confirm('¿Eliminar miembro ' + (m.displayName || m.username) + '?')) return;
       try {
@@ -524,6 +538,7 @@ function renderMiembros() {
         toast('Error eliminando miembro: ' + (err.message || err), 'error');
       }
     };
+
     grid.appendChild(el);
   });
 }
