@@ -615,8 +615,11 @@ async function mostrarInventarioMiembro(miembro) {
       totalValor += valorUnit * (it.qty || 0);
 
       html += `<div class="item-card" data-inv-id="${it.id}">
-        <button class="btn-delete btn-decrement" data-id="${it.id}" title="Quitar 1">🗑️</button>
-        <div class="item-image">📦</div>
+        <div class="item-image">
+          <!-- boton de eliminar encima de la imagen -->
+          <button class="item-delete" data-id="${it.id}" title="Quitar 1">✕</button>
+          <div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;font-size:2rem;">📦</div>
+        </div>
         <strong>${escapeHtml(itemMeta.nombre || it.itemId)}</strong>
         <div class="small">Cantidad: <span class="item-qty" data-id="${it.id}">${it.qty}</span></div>
         <div class="small">Valor unit.: ${valorUnit}${ (pctItem !== null) ? ` • pct item: ${Math.round(pctItem*100)}%` : ` • pct rango: ${Math.round((pctRank||0)*100)}%` }</div>
@@ -629,13 +632,16 @@ async function mostrarInventarioMiembro(miembro) {
     html += `</div>`;
     body.innerHTML = html;
 
-    body.querySelectorAll('.btn-decrement').forEach(btn => {
+    // <-- Inserta/pega aquí el handler para los botones de borrar 1 unidad
+    body.querySelectorAll('.item-delete').forEach(btn => {
       btn.onclick = async (e) => {
+        e.stopPropagation();
         const invId = btn.dataset.id;
         try {
           const invRef = doc(db, 'inventories', invId);
           const invSnap = await getDoc(invRef);
           if (!invSnap.exists()) {
+            // si ya no existe refrescamos la vista
             mostrarInventarioMiembro(miembro);
             return;
           }
@@ -646,6 +652,7 @@ async function mostrarInventarioMiembro(miembro) {
           } else {
             await deleteDoc(invRef);
           }
+          // refrescar la ventana modal para reflejar cambios
           mostrarInventarioMiembro(miembro);
         } catch (err) {
           console.error('Error decrementando inventory:', err);
@@ -653,6 +660,18 @@ async function mostrarInventarioMiembro(miembro) {
         }
       };
     });
+
+    // Vaciar inventario (botón existente)
+    const clearBtn = document.getElementById('clear-inventory');
+    if (clearBtn) {
+      clearBtn.onclick = async () => {
+        if (!confirm('¿Vaciar todo el inventario de ' + (miembro.displayName || miembro.username) + '?')) return;
+        const snapClear = await getDocs(query(collection(db, 'inventories'), where('userId', '==', miembro.id)));
+        for (const d of snapClear.docs) await deleteDoc(d.ref);
+        toast('Inventario vaciado');
+        mostrarInventarioMiembro(miembro);
+      };
+    }
 
     const clearBtn = document.getElementById('clear-inventory');
     if (clearBtn) {
@@ -720,41 +739,61 @@ document.getElementById('btn-crear-catalogo').addEventListener('click', async ()
    Buscador inventarios
    -------------------------- */
 document.getElementById('buscador-inventario').addEventListener('input', (e) => {
-  const q = e.target.value.toLowerCase();
+  const q = e.target.value.trim().toLowerCase();
   const grid = document.getElementById('grid-inventarios');
   grid.innerHTML = '';
 
+  // Si vacío: mostrar todos los miembros
   if (!q) {
-    grid.innerHTML = '<p class="sub">Escribe un nombre de usuario o objeto para buscar</p>';
-    return;
-  }
-
-  const miembroMatch = membersLocal.filter(m => (m.displayName || '').toLowerCase().includes(q));
-  const objetoMatch = catalogo.filter(c => c.nombre.toLowerCase().includes(q));
-
-  if (miembroMatch.length > 0) {
-    miembroMatch.forEach(m => {
+    membersLocal.forEach(m => {
       const items = inventoriesLocal[m.id] || [];
+      const totalItems = items.reduce((s, it) => s + (Number(it.qty) || 0), 0);
       const card = document.createElement('div');
       card.className = 'inventario-card';
       card.style.cursor = 'pointer';
       card.innerHTML = `
         <h4>${escapeHtml(m.displayName || m.username)}</h4>
         <p class="small">Rango: ${escapeHtml(m.rankId || '—')}</p>
-        <p class="small" style="margin-top: 0.5rem;">Objetos: ${items.length}</p>
+        <p class="small" style="margin-top: 0.5rem;">Objetos: ${totalItems}</p>
       `;
       card.onclick = () => mostrarInventarioMiembro(m);
       grid.appendChild(card);
     });
+    return;
   }
 
+  // Si hay q: primero buscar miembros cuyo nombre ó username EMPIECEN por q
+  const miembroMatch = membersLocal.filter(m => {
+    const name = (m.displayName || m.username || '').toLowerCase();
+    return name.startsWith(q);
+  });
+
+  if (miembroMatch.length > 0) {
+    miembroMatch.forEach(m => {
+      const items = inventoriesLocal[m.id] || [];
+      const totalItems = items.reduce((s, it) => s + (Number(it.qty) || 0), 0);
+      const card = document.createElement('div');
+      card.className = 'inventario-card';
+      card.style.cursor = 'pointer';
+      card.innerHTML = `
+        <h4>${escapeHtml(m.displayName || m.username)}</h4>
+        <p class="small">Rango: ${escapeHtml(m.rankId || '—')}</p>
+        <p class="small" style="margin-top: 0.5rem;">Objetos: ${totalItems}</p>
+      `;
+      card.onclick = () => mostrarInventarioMiembro(m);
+      grid.appendChild(card);
+    });
+    return;
+  }
+
+  // Si no hay miembros que empiecen por q, buscar por objeto (incluye)
+  const objetoMatch = catalogo.filter(c => c.nombre.toLowerCase().includes(q));
   if (objetoMatch.length > 0) {
     objetoMatch.forEach(obj => {
       const poseedores = membersLocal.filter(m => {
         const inv = inventoriesLocal[m.id] || [];
         return inv.some(i => i.itemId === obj.id);
       });
-
       if (poseedores.length > 0) {
         const card = document.createElement('div');
         card.className = 'inventario-card';
@@ -768,11 +807,11 @@ document.getElementById('buscador-inventario').addEventListener('input', (e) => 
         grid.appendChild(card);
       }
     });
+    if (grid.innerHTML === '') grid.innerHTML = '<p class="sub">Nadie tiene ese objeto</p>';
+    return;
   }
 
-  if (grid.innerHTML === '') {
-    grid.innerHTML = '<p class="sub">No se encontraron resultados</p>';
-  }
+  grid.innerHTML = '<p class="sub">No se encontraron resultados</p>';
 });
 
 /* --------------------------
