@@ -452,8 +452,15 @@ document.getElementById('form-registro').addEventListener('submit', async (e) =>
 function renderSelectRangos() {
   const select = document.getElementById('mi-rango');
   if (!select) return;
+
+  // convertir el objeto ranks en array con {id, nivel} y ordenar por nivel desc
+  const rankEntries = Object.keys(ranks).map(k => {
+    const nivel = (ranks[k] && typeof ranks[k].nivel === 'number') ? ranks[k].nivel : 0;
+    return { id: k, nivel };
+  }).sort((a, b) => b.nivel - a.nivel); // del 9 -> 1
+
   select.innerHTML = '<option value="">-- Selecciona un rango --</option>' +
-    Object.keys(ranks).map(k => `<option value="${k}">${escapeHtml(k)}</option>`).join('');
+    rankEntries.map(r => `<option value="${escapeHtml(r.id)}">${escapeHtml(r.id)}</option>`).join('');
 }
 
 function renderCatalogo() {
