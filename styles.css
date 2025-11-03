@@ -105,6 +105,11 @@ body {
     border-color: var(--accent);
 }
 
+btn-remove-item {
+    width: 40px;
+    height: 38px;
+}
+
 .btn-delete {
     background: var(--error);
     color: white;
