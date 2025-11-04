@@ -462,7 +462,9 @@ function renderCatalogo() {
 }
 
 function renderMiembros() {
-  const grid = document.getElementById('grid-miembros'); if (!grid) return; grid.innerHTML = '';
+  const grid = document.getElementById('grid-miembros');
+  if (!grid) return;
+  grid.innerHTML = '';
 
   const membersSorted = [...membersLocal].sort((a, b) => {
     const aNivel = (ranks[a.rankId] && typeof ranks[a.rankId].nivel === 'number') ? ranks[a.rankId].nivel : 0;
@@ -475,13 +477,29 @@ function renderMiembros() {
     const rankNivel = (ranks[rankName] && typeof ranks[rankName].nivel === 'number') ? ranks[rankName].nivel : 0;
     const nivelClass = rankNivel ? `rango-${rankNivel}` : '';
 
-    const el = document.createElement('div'); el.className = 'miembro-card';
-    el.innerHTML = `\n      <div class="miembro-info">\n        <strong>${escapeHtml(m.displayName || m.username || m.id)}</strong>\n        <div class="small"><span class="sr-only">${escapeHtml(rankName)}</span></div>\n      </div>\n      <div class="miembro-actions" style="display:flex;gap:0.5rem;align-items:center;">\n        <span class="rango-badge ${nivelClass}">${escapeHtml(rankName)}</span>\n        <button class="btn-delete miembro-delete" data-id="${m.id}" title="Eliminar miembro">🗑️</button>\n      </div>\n    `;
+    const el = document.createElement('div');
+    el.className = 'miembro-card';
+    el.innerHTML = `
+      <div class="miembro-info">
+        <strong title="${escapeHtml(m.displayName || m.username || m.id)}">${escapeHtml(m.displayName || m.username || m.id)}</strong>
+        <span class="rango-badge ${nivelClass}" aria-label="Rango ${escapeHtml(rankName)}">${escapeHtml(rankName)}</span>
+      </div>
+      <div class="miembro-actions" style="display:flex;gap:0.5rem;align-items:center;">
+        <button class="btn-delete miembro-delete" data-id="${m.id}" title="Eliminar miembro">🗑️</button>
+      </div>
+    `;
 
-    el.onclick = (e) => { if (e.target && (e.target.closest('.miembro-delete') || e.target.classList.contains('miembro-delete'))) return; mostrarInventarioMiembro(m); };
+    // abrir inventario al click salvo que pulses delete
+    el.onclick = (e) => {
+      if (e.target && (e.target.closest('.miembro-delete') || e.target.classList.contains('miembro-delete'))) return;
+      mostrarInventarioMiembro(m);
+    };
 
     el.querySelector('.miembro-delete').onclick = async (e) => {
-      e.stopPropagation(); if (!confirm('¿Eliminar miembro ' + (m.displayName || m.username) + '?')) return; try { await deleteDoc(doc(db, 'profiles', m.id)); toast('Miembro eliminado'); } catch (err) { console.error('Error eliminando miembro:', err); toast('Error eliminando miembro: ' + (err.message || err), 'error'); }
+      e.stopPropagation();
+      if (!confirm('¿Eliminar miembro ' + (m.displayName || m.username) + '?')) return;
+      try { await deleteDoc(doc(db, 'profiles', m.id)); toast('Miembro eliminado'); }
+      catch (err) { console.error('Error eliminando miembro:', err); toast('Error eliminando miembro: ' + (err.message || err), 'error'); }
     };
 
     grid.appendChild(el);
