@@ -588,7 +588,7 @@ async function mostrarInventarioMiembro(miembro) {
 
             <div class="small"><strong>Cantidad:</strong> <span class="item-qty" data-id="${it.id}">${it.qty}</span></div>
 
-            <div class="small"><strong>Valor:</strong> ${formatNumber(valorUnit)}${pctHtml}</div>
+            <div class="small"><strong>Valor por unidad:</strong> ${formatNumber(valorUnit)}${pctHtml}</div>
 
             <div class="item-total" aria-hidden="true">${formatNumber(valorUnit * it.qty)} $</div>
           </div>
