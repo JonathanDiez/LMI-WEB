@@ -342,7 +342,7 @@ function renderCatalogo() {
           ${pctBadge}
         </div>
         <div class="small" style="margin-top:0.2rem;text-align:left;">
-          Valor: ${valorFmt}${pagable}
+          Valor por: ${valorFmt}${pagable}
         </div>
       </div>
       <div style="display:flex;flex-direction:row;align-items:center;gap:0.5rem;">
@@ -552,29 +552,57 @@ async function mostrarInventarioMiembro(miembro) {
     const basePct = (typeof rango.pct === 'number') ? rango.pct : 0;
     const pct500 = (typeof rango.pct500 === 'number') ? rango.pct500 : null;
     const pctRankEffective = miembro.tiene500 ? (pct500 ?? basePct) : basePct;
-    // calcula diferencia para mostrar +X% si pct500 > basePct
     const extraPct = (miembro.tiene500 && pct500 !== null && pct500 > basePct) ? Math.round((pct500 - basePct) * 100) : 0;
+
     const totalObjetos = items.reduce((s, it) => s + (Number(it.qty) || 0), 0);
+
+    // Calculamos totalValor (0 si no hay items)
+    let totalValor = 0;
+    for (const it of items) {
+      const itemMeta = catalogo.find(ci => ci.id === it.itemId) || {};
+      const pctItem = (typeof itemMeta.pct === 'number') ? itemMeta.pct : null;
+      const eff = (pctItem !== null) ? pctItem : pctRankEffective;
+      const valorUnit = Math.round((itemMeta.valorBase || 0) * (eff || 1));
+      totalValor += valorUnit * (it.qty || 0);
+    }
+    const totalValorFmt = formatNumber(totalValor);
+
+    // Preparar header del modal (siempre lo actualizamos)
+    const rangoNombre = miembro.rankId || '—';
+    const basePctDisplay = Math.round(basePct * 100);
+    let badgeInside = `${basePctDisplay}%`;
+    if (miembro.tiene500 && extraPct > 0) {
+      badgeInside = `${basePctDisplay}% + ${extraPct}% POR 500 APORTACIONES`;
+    }
+
+    // modal-titulo: RANGO (mayúsculas + negrita) + badge
+    byId('modal-titulo').innerHTML = `
+      <span style="font-weight:800;letter-spacing:0.5px;text-transform:uppercase;">${escapeHtml(String(rangoNombre))}</span>
+      <span class="rango-badge-detail" style="margin-left:0.5rem;padding:4px 8px;border-radius:8px;border:1px solid var(--border);font-weight:700;">[${escapeHtml(badgeInside)}]</span>
+    `;
+
+    // modal-subtitulo: nombre del miembro (secundario)
+    byId('modal-subtitulo').innerHTML = `
+      <span style="font-weight:600;opacity:0.95;">${escapeHtml(miembro.displayName || miembro.username || miembro.id)}</span>
+    `;
 
     const body = byId('modal-body');
     if (!body) { console.error('DEBUG: modal-body no encontrado en DOM'); toast('Error: modal no configurado en el HTML', 'error'); return; }
 
-    if (!items.length) {
-      body.innerHTML = '<p class="sub">Este miembro no tiene objetos en su inventario</p>';
-    } else {
-      let totalValor = 0;
-
-      const itemCards = items.map(it => {
+    // Si hay items, renderizamos tarjetas; si no, mostramos mensaje coherente
+    let itemCards = '';
+    if (items.length) {
+      itemCards = items.map(it => {
         const itemMeta = catalogo.find(ci => ci.id === it.itemId) || {};
         const pctItem = (typeof itemMeta.pct === 'number') ? itemMeta.pct : null;
         const eff = (pctItem !== null) ? pctItem : pctRankEffective;
         const valorUnit = Math.round((itemMeta.valorBase || 0) * (eff || 1));
-        totalValor += valorUnit * (it.qty || 0);
 
         // imagen local o default
         const fileName = itemMeta.imagen ? String(itemMeta.imagen) : 'default.png';
         const imageUrl = `./images/${encodeURIComponent(fileName)}`;
 
+        // porcentaje item (si existe) en negrita
         const pctHtml = pctItem !== null ? ` <strong class="pct-strong">(${Math.round(pctItem * 100)}%)</strong>` : '';
 
         return `
@@ -594,76 +622,54 @@ async function mostrarInventarioMiembro(miembro) {
           </div>
         `;
       }).join('');
+    }
 
-      // Header personalizado: OBJETOS + badge (izq) | Vaciar + badge VALOR TOTAL (der)
-      const totalValorFmt = formatNumber(totalValor);
-
-      body.innerHTML = `
-        <div class="modal-top" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;gap:1rem;">
-          <div style="display:flex;align-items:center;gap:0.75rem;">
-            <div style="font-weight:700;text-transform:uppercase;">Objetos en inventario:</div>
-            <span class="header-badge items-badge">${totalObjetos}</span>
-          </div>
-
-          <div style="display:flex;align-items:center;gap:0.5rem;flex-direction: row-reverse;">
-            <button class="btn-delete btn-delete--big" id="clear-inventory">Vaciar inventario</button>
-            <span class="header-badge total-badge">Valor total: <strong>${totalValorFmt} $</strong></span>
-          </div>
+    // Construir la parte superior (siempre): Objetos (izq) | Vaciar + Valor total (der)
+    body.innerHTML = `
+      <div class="modal-top" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;gap:1rem;">
+        <div style="display:flex;align-items:center;gap:0.75rem;">
+          <div style="font-weight:700;text-transform:uppercase;">Objetos en inventario:</div>
+          <span class="header-badge items-badge" style="font-weight:700;padding:0.2rem 0.5rem;border-radius:8px;border:1px solid var(--border);">${totalObjetos}</span>
         </div>
 
-        <div class="inventario-items">${itemCards}</div>
-      `;
+        <div style="display:flex;align-items:center;gap:0.5rem;">
+          <button class="btn-delete btn-delete--big" id="clear-inventory">Vaciar inventario</button>
+          <span class="header-badge total-badge" style="font-weight:700;padding:0.2rem 0.5rem;border-radius:8px;border:1px solid var(--border);">Valor total: <strong>${totalValorFmt} $</strong></span>
+        </div>
+      </div>
 
-      // título: RANGO en grande + badge; subtítulo: nombre del miembro (más discreto)
-      const rangoNombre = miembro.rankId || '—';
-      const basePctDisplay = Math.round(basePct * 100);
-      let badgeInside = `${basePctDisplay}%`;
-      if (miembro.tiene500 && extraPct > 0) {
-        badgeInside = `${basePctDisplay}% + ${extraPct}% POR 500 APORTACIONES`;
-      }
+      ${ items.length ? `<div class="inventario-items">${itemCards}</div>` : `<p class="sub">Este miembro no tiene objetos en su inventario</p>` }
+    `;
 
-      // modal-titulo mostrará: RANGO [50% + 10% POR 500 APORTACIONES]
-      byId('modal-titulo').innerHTML = `
-        <span style="font-weight:800;text-transform:uppercase;">${escapeHtml(String(rangoNombre))}</span>
-        <span class="rango-badge-detail">[${escapeHtml(badgeInside)}]</span>
-      `;
+    // Delegación local para decrementar items (dentro del modal)
+    body.onclick = async (e) => {
+      const btn = e.target.closest('.item-delete');
+      if (!btn) return;
+      e.stopPropagation();
+      const invId = btn.dataset.id;
+      try {
+        const invRef = doc(db, 'inventories', invId);
+        const invSnap = await getDoc(invRef);
+        if (!invSnap.exists()) return mostrarInventarioMiembro(miembro);
+        const currentQty = Number(invSnap.data().qty || 0);
+        if (currentQty > 1) await updateDoc(invRef, { qty: currentQty - 1, updatedAt: serverTimestamp() });
+        else await deleteDoc(invRef);
+        mostrarInventarioMiembro(miembro);
+      } catch (err) { console.error(err); toast('Error al quitar 1 unidad: ' + (err.message || err), 'error'); }
+    };
 
-      // modal-subtitulo mostrará el nombre del miembro (más pequeño / secundario)
-      byId('modal-subtitulo').innerHTML = `
-        <span style="font-weight:600;opacity:0.9;">${escapeHtml(miembro.displayName || miembro.username || miembro.id)}</span>
-      `;
-
-      // Delegación local: quitar 1 unidad
-      const inventBody = body;
-      inventBody.onclick = async (e) => {
-        const btn = e.target.closest('.item-delete');
-        if (!btn) return;
-        e.stopPropagation();
-        const invId = btn.dataset.id;
-        try {
-          const invRef = doc(db, 'inventories', invId);
-          const invSnap = await getDoc(invRef);
-          if (!invSnap.exists()) return mostrarInventarioMiembro(miembro);
-          const currentQty = Number(invSnap.data().qty || 0);
-          if (currentQty > 1) await updateDoc(invRef, { qty: currentQty - 1, updatedAt: serverTimestamp() });
-          else await deleteDoc(invRef);
-          mostrarInventarioMiembro(miembro);
-        } catch (err) { console.error(err); toast('Error al quitar 1 unidad: ' + (err.message || err), 'error'); }
-      };
-
-      // Evitar listeners duplicados en clear-inventory
-      const existingClear = byId('clear-inventory');
-      if (existingClear) {
-        const clone = existingClear.cloneNode(true);
-        existingClear.parentNode.replaceChild(clone, existingClear);
-        clone.addEventListener('click', async () => {
-          if (!confirm(`¿Vaciar todo el inventario de ${miembro.displayName || miembro.username}?`)) return;
-          const snapClear = await getDocs(query(collection(db, 'inventories'), where('userId', '==', miembro.id)));
-          for (const d of snapClear.docs) await deleteDoc(d.ref);
-          toast('Inventario vaciado');
-          mostrarInventarioMiembro(miembro);
-        });
-      }
+    // Evitar listeners duplicados en clear-inventory (si existe, la clonamos y reasignamos)
+    const existingClear = byId('clear-inventory');
+    if (existingClear) {
+      const clone = existingClear.cloneNode(true);
+      existingClear.parentNode.replaceChild(clone, existingClear);
+      clone.addEventListener('click', async () => {
+        if (!confirm(`¿Vaciar todo el inventario de ${miembro.displayName || miembro.username}?`)) return;
+        const snapClear = await getDocs(query(collection(db, 'inventories'), where('userId', '==', miembro.id)));
+        for (const d of snapClear.docs) await deleteDoc(d.ref);
+        toast('Inventario vaciado');
+        mostrarInventarioMiembro(miembro);
+      });
     }
 
     // abrir modal de forma robusta
