@@ -1,11 +1,11 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Inventario LM</title>
-  <link rel="stylesheet" href="styles.css">
-  <link rel="icon" type="image/png" href="favicon.png">
+  <link rel="stylesheet" href="styles.css" />
+  <link rel="icon" type="image/png" href="favicon.png" />
 </head>
 <body>
   <div id="app" class="app-contenedor">
@@ -13,11 +13,11 @@
     <header class="cabecera">
       <div class="cab-izq">
         <h1>🎯 Inventario LM</h1>
-        <p class="sub">Sistema de gestión de LOOTs y Notficaciones</p>
+        <p class="sub">Sistema de gestión de LOOTs y Notificaciones</p>
       </div>
       <div class="cab-der">
-        <div id="user-badge" class="user-badge" style="display:none;">
-          <img id="user-avatar" src="" alt="avatar" style="display:none;" />
+        <div id="user-badge" class="user-badge" hidden>
+          <img id="user-avatar" src="" alt="avatar" hidden />
           <div class="user-info">
             <div id="user-nombre" class="user-name"></div>
             <span class="small">Administrador</span>
@@ -36,75 +36,57 @@
           <h2>Acceso Administrador</h2>
           <p class="sub">Ingresa tus credenciales para continuar</p>
         </div>
-        
+
         <div class="login-form">
           <div class="input-group">
             <label class="input-label">Correo electrónico</label>
             <input id="email" type="email" placeholder="admin@example.com" />
           </div>
-          
+
           <div class="input-group">
             <label class="input-label">Contraseña</label>
             <input id="password" type="password" placeholder="••••••••" />
           </div>
-          
+
           <button id="btn-entrar" class="btn-pri full-width">Iniciar sesión</button>
         </div>
-        
-        <p class="nota small">
-          Usa las credenciales creadas en Firebase Auth
-        </p>
+
+        <p class="nota small">Usa las credenciales creadas en Firebase Auth</p>
       </section>
 
       <!-- DASHBOARD -->
-      <section id="seccion-dashboard" class="dashboard" style="display:none;">
-        <!-- SIDEBAR -->
+      <section id="seccion-dashboard" class="dashboard" hidden>
         <aside class="sidebar">
           <div class="sidebar-header">
             <h4 class="sidebar-title">Panel de Control</h4>
           </div>
-          
+
           <nav class="nav-menu">
-            <button data-view="formulario" class="nav-btn active">
-              <span class="nav-icon">📝</span>
-              <span>Nuevo LOOT</span>
-            </button>
-            <button data-view="miembros" class="nav-btn">
-              <span class="nav-icon">👥</span>
-              <span>Miembros</span>
-            </button>
-            <button data-view="catalogo" class="nav-btn">
-              <span class="nav-icon">📦</span>
-              <span>Catálogo</span>
-            </button>
-            <button data-view="inventarios" class="nav-btn">
-              <span class="nav-icon">🎒</span>
-              <span>Inventarios</span>
-            </button>
+            <button data-view="formulario" class="nav-btn active"><span class="nav-icon">📝</span><span>Nuevo LOOT</span></button>
+            <button data-view="miembros" class="nav-btn"><span class="nav-icon">👥</span><span>Miembros</span></button>
+            <button data-view="catalogo" class="nav-btn"><span class="nav-icon">📦</span><span>Catálogo</span></button>
+            <button data-view="inventarios" class="nav-btn"><span class="nav-icon">🎒</span><span>Inventarios</span></button>
           </nav>
-          
+
           <div class="sidebar-footer">
-            <button id="btn-logout-sidebar" class="nav-logout">
-              <span>🚪</span>
-              Cerrar sesión
-            </button>
+            <button id="btn-logout-sidebar" class="nav-logout"><span>🚪</span> Cerrar sesión</button>
           </div>
         </aside>
 
         <!-- CONTENT -->
         <section class="contenido">
-          <!-- FORMULARIO -->
+          <!-- FORM -->
           <div id="view-formulario" class="view active">
             <div class="view-header">
               <h3>📝 Enviar Registro de Loot</h3>
               <p class="sub">Registra los objetos encontrados por los miembros</p>
             </div>
-            
+
             <form id="form-registro">
               <div class="form-section">
                 <label class="form-label">Nombre del Miembro</label>
                 <input id="buscar-miembro" placeholder="Buscar miembro..." autocomplete="off" />
-                <div id="sugerencias-miembro" class="sugerencias"></div>
+                <div id="sugerencias-miembro" class="sugerencias" hidden></div>
               </div>
 
               <div class="form-section">
@@ -126,16 +108,11 @@
                   <label class="form-label">Objetos encontrados</label>
                 </div>
                 <div id="contenedor-items" class="items-container"></div>
-                <button id="btn-add-item" type="button" class="btn-add-modern">
-                  <span>➕</span>
-                  Añadir objeto
-                </button>
+                <button id="btn-add-item" type="button" class="btn-add-modern"><span>➕</span> Añadir objeto</button>
               </div>
 
               <div class="form-actions">
-                <button type="submit" class="btn-pri">
-                  Enviar registro
-                </button>
+                <button type="submit" class="btn-pri">Enviar registro</button>
               </div>
             </form>
           </div>
@@ -146,7 +123,7 @@
               <h3>👥 Gestión de Miembros</h3>
               <p class="sub">Administra los miembros de tu organización</p>
             </div>
-            
+
             <div class="grid-dos">
               <div class="panel-section">
                 <div class="panel-header">
@@ -157,22 +134,20 @@
                     <label class="input-label">Nombre del miembro</label>
                     <input id="mi-nombre" placeholder="Ej: Juan Pérez" />
                   </div>
-                  
+
                   <div class="input-group">
                     <label class="input-label">Rango asignado</label>
                     <select id="mi-rango">
                       <option value="">-- Selecciona un rango --</option>
                     </select>
                   </div>
-                  
-                  <div class="checkbox-label">
+
+                  <label class="checkbox-label">
                     <input id="mi-500" type="checkbox" />
                     <span>¿Tiene las 500 aportaciones?</span>
-                  </div>
-                  
-                  <button id="btn-crear-miembro" class="btn-pri full-width" style="margin-top: 1rem;">
-                    Crear miembro
-                  </button>
+                  </label>
+
+                  <button id="btn-crear-miembro" class="btn-pri full-width" style="margin-top:1rem;">Crear miembro</button>
                 </div>
               </div>
 
@@ -180,9 +155,7 @@
                 <div class="panel-header">
                   <h4>Lista de miembros activos</h4>
                 </div>
-                <div class="search-section">
-                  <input id="filtro-miembros" placeholder="🔍 Filtrar por nombre..." />
-                </div>
+                <div class="search-section"><input id="filtro-miembros" placeholder="🔍 Filtrar por nombre..." /></div>
                 <div id="grid-miembros" class="miembros-list"></div>
               </div>
             </div>
@@ -194,7 +167,7 @@
               <h3>📦 Catálogo de Objetos</h3>
               <p class="sub">Objetos disponibles que pueden aparecer en inventarios</p>
             </div>
-            
+
             <div class="panel-section">
               <div class="panel-header">
                 <h4>Objetos registrados</h4>
@@ -202,7 +175,7 @@
               <div id="lista-catalogo" class="catalogo-list"></div>
             </div>
 
-            <div class="panel-section" style="margin-top: 2rem; padding-top: 2rem; border-top: 1px solid var(--border);">
+            <div class="panel-section" style="margin-top:2rem;padding-top:2rem;border-top:1px solid var(--border);">
               <div class="panel-header">
                 <h4>Agregar nuevo objeto</h4>
               </div>
@@ -211,7 +184,7 @@
                   <label class="input-label">Nombre del objeto</label>
                   <input id="cat-nombre" placeholder="Ej: AK-47" />
                 </div>
-                
+
                 <div class="input-group">
                   <label class="input-label">Valor base ($)</label>
                   <input id="cat-valor" type="number" placeholder="15000" />
@@ -219,17 +192,21 @@
 
                 <div class="input-group">
                   <label class="input-label">Porcentaje específico del objeto (%) — opcional</label>
-                  <input id="cat-pct" type="number" min="0" max="100" placeholder="Ej: 80 (dejar vacío para usar pct del rango)" />
-                </div>
-
-                <div class="checkbox-label">
-                  <input id="cat-pagable" type="checkbox" checked />
-                  <span>Objeto pagable</span>
+                  <input id="cat-pct" type="number" min="0" max="100" placeholder="Ej: 80" />
                 </div>
                 
-                <button id="btn-crear-catalogo" class="btn-pri full-width" style="margin-top: 1rem;">
-                  Agregar al catálogo
-                </button>
+                <div class="input-group">
+                  <label class="input-label">Nombre del archivo de imagen (en /images)</label>
+                  <input id="cat-imagen" type="text" placeholder="ejemplo.png" />
+                  <small class="input-help">Solo el nombre, sin ruta ni https://</small>
+                </div>
+
+                <label class="checkbox-label">
+                  <input id="cat-pagable" type="checkbox" checked />
+                  <span>Objeto pagable</span>
+                </label>
+
+                <button id="btn-crear-catalogo" class="btn-pri full-width" style="margin-top:1rem;">Agregar al catálogo</button>
               </div>
             </div>
           </div>
@@ -240,11 +217,11 @@
               <h3>🎒 Inventarios de Miembros</h3>
               <p class="sub">Consulta inventarios por usuario o busca quién tiene un objeto específico</p>
             </div>
-            
+
             <div class="search-section">
               <input id="buscador-inventario" placeholder="🔍 Buscar por nombre de usuario o por objeto..." />
             </div>
-            
+
             <div id="grid-inventarios" class="inventarios-grid"></div>
           </div>
         </section>
@@ -252,7 +229,7 @@
     </main>
 
     <!-- MODAL INVENTARIO -->
-    <div id="modal-inventario" class="modal-overlay">
+    <div id="modal-inventario" class="modal-overlay" hidden>
       <div class="modal-content">
         <div class="modal-header">
           <div>
@@ -269,11 +246,7 @@
     <div id="toasts" class="toasts"></div>
   </div>
 
-  <!-- Importa la configuración y la app -->
-  <script type="module" src="./js/firebase-config.js"></script>
+  <!-- Importa la app (app.js importa firebase-config internamente) -->
   <script type="module" src="./js/app.js"></script>
 </body>
 </html>
-
-
-
