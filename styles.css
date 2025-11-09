@@ -1042,7 +1042,8 @@ input::placeholder {
 }
 
 .inventario-meta .items-sub {
-  font-size: 0.7rem;
+  font-size: 0.75rem;
+  font-weight: bold;
   color: var(--text-3);
   text-transform: uppercase;
   letter-spacing: 0.05em;
@@ -1163,6 +1164,12 @@ input::placeholder {
 .item-delete:hover {
   transform: scale(1.15) rotate(90deg);
   box-shadow: 0 4px 12px rgba(239, 68, 68, 0.6);
+}
+
+.item-total {
+  color: #06d6a0;
+  font-weight: 700;
+  margin-top: 15px;
 }
 
 /* ===========================
