@@ -39,11 +39,11 @@ let inventoriesLocal = {}; // map userId -> array
 let unsubscribeFns = [];
 let isWatching = false;
 const addUnsub = fn => typeof fn === 'function' && unsubscribeFns.push(fn);
-const unsubscribeAll = () => { unsubscribeFns.forEach(f => { try { f(); } catch{} }); unsubscribeFns = []; isWatching = false; };
+const unsubscribeAll = () => { unsubscribeFns.forEach(f => { try { f(); } catch { } }); unsubscribeFns = []; isWatching = false; };
 
 // utilidades
 const escapeHtml = str => str == null ? '' : String(str)
-  .replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;').replaceAll("'", '&#039;');
+  .replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;').replaceAll("'", '&#039;');
 
 const toast = (msg, type = 'info', timeout = 2500) => {
   const t = document.createElement('div');
@@ -215,7 +215,7 @@ function addItemRow() {
   sel.appendChild(placeholder);
   if (catalogo.length) {
     catalogo.forEach(c => {
-      const opt = document.createElement('option'); opt.value = c.id; opt.textContent = `${c.nombre} - ${formatNumber(Number(c.valorBase||0))} $`;
+      const opt = document.createElement('option'); opt.value = c.id; opt.textContent = `${c.nombre} - ${formatNumber(Number(c.valorBase || 0))} $`;
       sel.appendChild(opt);
     });
   } else {
@@ -234,13 +234,28 @@ byId('btn-add-item')?.addEventListener('click', addItemRow);
 // ------------------ Form submit ------------------
 byId('form-registro')?.addEventListener('submit', async (e) => {
   e.preventDefault();
-  const memberName = (buscarMiembroInput?.value || '').trim();
-  let member = null;
+
+  // preferir id seleccionado por el typeahead
   const chosenId = buscarMiembroInput?.dataset?.id;
-  if (chosenId) member = membersLocal.find(m => m.id === chosenId) || null;
-  if (!member) member = membersLocal.find(m => (m.displayName === memberName) || (m.username === memberName)) || null;
+  let member = null;
+
+  if (chosenId) {
+    member = membersLocal.find(m => m.id === chosenId) || null;
+  } else {
+    // buscar por texto (case-insensitive). Primero intentamos coincidencia exacta,
+    // luego búsqueda por includes (parcial).
+    const q = (buscarMiembroInput?.value || '').trim().toLowerCase();
+    if (q) {
+      member = membersLocal.find(m => ((m.displayName || '').toLowerCase() === q) || ((m.username || '').toLowerCase() === q)) || null;
+      if (!member) {
+        member = membersLocal.find(m => ((m.displayName || '').toLowerCase().includes(q)) || ((m.username || '').toLowerCase().includes(q))) || null;
+      }
+    }
+  }
+
   if (!member) return toast('Selecciona un miembro válido', 'error');
 
+  // --- resto del submit sin cambios ---
   const filas = Array.from((contenedorItems || document).querySelectorAll('.item-row'));
   if (!filas.length) return toast('Añade al menos un objeto', 'error');
   const actividad = (byId('actividad')?.value || '').trim();
@@ -267,8 +282,8 @@ byId('form-registro')?.addEventListener('submit', async (e) => {
 
     // upsert inventories
     for (const it of items) {
-      const q = query(collection(db, 'inventories'), where('userId','==', member.id), where('itemId','==', it.itemId));
-      const snap = await getDocs(q);
+      const q2 = query(collection(db, 'inventories'), where('userId', '==', member.id), where('itemId', '==', it.itemId));
+      const snap = await getDocs(q2);
       if (!snap.empty) {
         const existing = snap.docs[0];
         const newQty = (existing.data().qty || 0) + it.qty;
@@ -278,7 +293,7 @@ byId('form-registro')?.addEventListener('submit', async (e) => {
       }
     }
 
-    // summary (no bloquear)
+    // calcular resumen (igual que ya tenías)...
     let totalValor = 0; const lootParts = [];
     const rango = ranks[member.rankId] || {};
     const pctRank = member.tiene500 ? (rango.pct500 || rango.pct || 0) : (rango.pct || 0);
@@ -291,23 +306,24 @@ byId('form-registro')?.addEventListener('submit', async (e) => {
     }
     const lootSummary = lootParts.join(', ');
 
-    // enviar worker (intento, no bloquea la UI)
+    // enviar worker (no bloqueante)
     try {
       let authorName = auth.currentUser.email || auth.currentUser.uid;
       try {
         const admSnap = await getDoc(doc(db, 'admins', auth.currentUser.uid));
         if (admSnap.exists() && admSnap.data().displayName) authorName = admSnap.data().displayName;
-      } catch {}
+      } catch { }
       const idToken = await getIdToken(auth.currentUser, true);
       const payload = { registryId: registryRef.id, authorId: auth.currentUser.uid, authorEmail: auth.currentUser.email, authorName, memberId: member.id, memberName: member.displayName || member.username || member.id, actividad, items, lootSummary, totalValor, createdAt: new Date().toISOString() };
-      fetch('https://flat-scene-48ab.ggoldenhhands.workers.dev/', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + idToken }, body: JSON.stringify(payload) })
-        .then(resp => { if (resp?.ok) updateDoc(registryRef, { processed: true, processedAt: serverTimestamp() }).catch(()=>{}); })
-        .catch(()=>{});
+      fetch(WORKER_URL, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + idToken }, body: JSON.stringify(payload) })
+        .then(resp => { if (resp?.ok) updateDoc(registryRef, { processed: true, processedAt: serverTimestamp() }).catch(() => { }); })
+        .catch(() => { });
     } catch (err) { /* silent */ }
 
     // limpiar UI
     if (contenedorItems) contenedorItems.innerHTML = '';
-    addItemRow(); if (buscarMiembroInput) { buscarMiembroInput.value = ''; buscarMiembroInput.dataset.id = ''; }
+    addItemRow();
+    if (buscarMiembroInput) { buscarMiembroInput.value = ''; buscarMiembroInput.dataset.id = ''; }
     if (byId('actividad')) byId('actividad').value = '';
     toast('Registro guardado', 'info', 1400);
   } catch (err) {
@@ -318,7 +334,7 @@ byId('form-registro')?.addEventListener('submit', async (e) => {
 // ------------------ Renders ------------------
 function renderSelectRangos() {
   const sel = byId('mi-rango'); if (!sel) return;
-  const rankEntries = Object.keys(ranks).map(k => ({ id: k, nivel: (ranks[k]?.nivel ?? 0) })).sort((a,b) => b.nivel - a.nivel);
+  const rankEntries = Object.keys(ranks).map(k => ({ id: k, nivel: (ranks[k]?.nivel ?? 0) })).sort((a, b) => b.nivel - a.nivel);
   sel.innerHTML = '<option value="">-- Selecciona un rango --</option>' + rankEntries.map(r => `<option value="${escapeHtml(r.id)}">${escapeHtml(r.id)}</option>`).join('');
   createCustomSelectFromNative(sel);
 }
@@ -333,7 +349,7 @@ function renderCatalogo() {
     const el = document.createElement('div'); el.className = 'catalogo-item';
     const pagable = (c.pagable === false) ? ' • No pagable' : '';
     const valorFmt = formatNumber(Number(c.valorBase || 0));
-    const pctBadge = (typeof c.pct === 'number') ? `<span class="pct-badge" title="Porcentaje fijo del item">${Math.round(c.pct*100)}%</span>` : '';
+    const pctBadge = (typeof c.pct === 'number') ? `<span class="pct-badge" title="Porcentaje fijo del item">${Math.round(c.pct * 100)}%</span>` : '';
 
     el.innerHTML = `
       <div style="display:flex;flex-direction:column;gap:0.25rem;min-width:0;">
@@ -359,23 +375,35 @@ function renderCatalogo() {
   });
 }
 
-function renderMiembros() {
+function renderMiembros(filter = '') {
   const grid = byId('grid-miembros'); if (!grid) return; grid.innerHTML = '';
-  const sorted = [...membersLocal].sort((a,b) => (ranks[b.rankId]?.nivel || 0) - (ranks[a.rankId]?.nivel || 0));
-  sorted.forEach(m => grid.appendChild(createMemberCard(m)));
+  const q = (filter || '').trim().toLowerCase();
+
+  const sorted = [...membersLocal].sort((a, b) => (ranks[b.rankId]?.nivel || 0) - (ranks[a.rankId]?.nivel || 0));
+  const filtered = q ? sorted.filter(m => {
+    const name = (m.displayName || m.username || '').toLowerCase();
+    return name.includes(q);
+  }) : sorted;
+
+  if (!filtered.length) {
+    grid.innerHTML = '<p class="sub">No se encontraron miembros</p>';
+    return;
+  }
+
+  filtered.forEach(m => grid.appendChild(createMemberCard(m)));
 }
 
 function renderInventariosGrid(filter = '') {
   const grid = byId('grid-inventarios'); if (!grid) return; grid.innerHTML = '';
   const q = (filter || '').toLowerCase();
-  const membersSorted = [...membersLocal].sort((a,b) => (ranks[b.rankId]?.nivel || 0) - (ranks[a.rankId]?.nivel || 0));
+  const membersSorted = [...membersLocal].sort((a, b) => (ranks[b.rankId]?.nivel || 0) - (ranks[a.rankId]?.nivel || 0));
   if (!membersSorted.length) { grid.innerHTML = '<p class="sub">No se encontraron miembros</p>'; return; }
 
   membersSorted.forEach(m => {
     const name = (m.displayName || m.username || m.id || '').toString();
     if (q && !name.toLowerCase().includes(q)) return;
     const inv = inventoriesLocal[m.id] || [];
-    const totalItems = inv.reduce((s,it) => s + (Number(it.qty) || 0), 0);
+    const totalItems = inv.reduce((s, it) => s + (Number(it.qty) || 0), 0);
     const rankName = m.rankId || '—';
     const nivelClass = getRankClass(rankName);
     const card = document.createElement('div'); card.className = 'inventario-card';
@@ -422,11 +450,11 @@ function createMemberCard(member) {
       if (!id) return;
       if (!confirm(`¿Seguro que quieres eliminar al miembro "${member.displayName || member.username || id}"?\nSe borrarán su perfil, su inventario y los registros asociados.`)) return;
       try {
-        const invQ = query(collection(db, 'inventories'), where('userId','==', id));
+        const invQ = query(collection(db, 'inventories'), where('userId', '==', id));
         const invSnap = await getDocs(invQ);
         for (const d of invSnap.docs) await deleteDoc(d.ref);
 
-        const regQ = query(collection(db, 'registries'), where('memberId','==', id));
+        const regQ = query(collection(db, 'registries'), where('memberId', '==', id));
         const regSnap = await getDocs(regQ);
         for (const d of regSnap.docs) await deleteDoc(d.ref);
 
@@ -490,7 +518,7 @@ function showMemberSuggestions(q) {
   const matches = membersLocal.filter(m => {
     const name = (m.displayName || m.username || '').toLowerCase();
     return name.includes(q);
-  }).slice(0,8);
+  }).slice(0, 8);
   if (!matches.length) { if (buscarMiembroInput) buscarMiembroInput.dataset.id = ''; sugerenciasMiembro.classList.remove('active'); return; }
   matches.forEach(m => {
     const div = document.createElement('div'); div.textContent = m.displayName || m.username; div.tabIndex = 0;
@@ -638,7 +666,7 @@ async function mostrarInventarioMiembro(miembro) {
         </div>
       </div>
 
-      ${ items.length ? `<div class="inventario-items">${itemCards}</div>` : `<p class="sub">Este miembro no tiene objetos en su inventario</p>` }
+      ${items.length ? `<div class="inventario-items">${itemCards}</div>` : `<p class="sub">Este miembro no tiene objetos en su inventario</p>`}
     `;
 
     // Delegación local para decrementar items (dentro del modal)
@@ -825,7 +853,21 @@ document.addEventListener('DOMContentLoaded', () => {
   })();
 
   // --- Forzar carga inicial si no hay datos ---
-  if (!membersLocal.length) cargarDatosIniciales().catch(() => {});
+  if (!membersLocal.length) cargarDatosIniciales().catch(() => { });
+});
+
+// filtrar lista de Miembros en tiempo real (panel "Miembros")
+byId('filtro-miembros')?.addEventListener('input', (e) => {
+  const q = (e.target.value || '').trim();
+  renderMiembros(q);
+  // opcional: también filtrar la grid de inventarios para mantener coherencia
+  renderInventariosGrid(q);
+});
+
+// filtrar inventarios (panel "Inventarios")
+byId('buscador-inventario')?.addEventListener('input', (e) => {
+  const q = (e.target.value || '').trim();
+  renderInventariosGrid(q);
 });
 
 // --- Botón de cambio de tema ---
