@@ -12,6 +12,7 @@ import {
 } from 'https://www.gstatic.com/firebasejs/9.22.2/firebase-auth.js';
 
 // INIT
+const WORKER_URL = 'https://flat-scene-48ab.ggoldenhhands.workers.dev/';
 const app = initializeApp(FIREBASE_CONFIG);
 const db = getFirestore(app);
 const auth = getAuth(app);
@@ -306,25 +307,99 @@ byId('form-registro')?.addEventListener('submit', async (e) => {
     }
     const lootSummary = lootParts.join(', ');
 
-    // enviar worker (no bloqueante)
+    // enviar worker (robusto, con logging y fallback para debug)
     try {
       let authorName = auth.currentUser.email || auth.currentUser.uid;
       try {
         const admSnap = await getDoc(doc(db, 'admins', auth.currentUser.uid));
         if (admSnap.exists() && admSnap.data().displayName) authorName = admSnap.data().displayName;
-      } catch { }
-      const idToken = await getIdToken(auth.currentUser, true);
-      const payload = { registryId: registryRef.id, authorId: auth.currentUser.uid, authorEmail: auth.currentUser.email, authorName, memberId: member.id, memberName: member.displayName || member.username || member.id, actividad, items, lootSummary, totalValor, createdAt: new Date().toISOString() };
-      fetch(WORKER_URL, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + idToken }, body: JSON.stringify(payload) })
-        .then(resp => { if (resp?.ok) updateDoc(registryRef, { processed: true, processedAt: serverTimestamp() }).catch(() => { }); })
-        .catch(() => { });
-    } catch (err) { /* silent */ }
+      } catch (e) { /* ignore */ }
+
+      // Construir payload
+      const idTokenPromise = getIdToken(auth.currentUser, true);
+      const payload = {
+        registryId: registryRef.id,
+        authorId: auth.currentUser.uid,
+        authorEmail: auth.currentUser.email,
+        authorName,
+        memberId: member.id,
+        memberName: member.displayName || member.username || member.id,
+        actividad,
+        items,
+        lootSummary,
+        totalValor,
+        createdAt: new Date().toISOString()
+      };
+
+      // Comprobaciones básicas
+      if (typeof WORKER_URL === 'undefined' || !WORKER_URL) {
+        console.warn('DEBUG: WORKER_URL no está definido — salto el envío al worker (define WORKER_URL arriba del script).');
+      } else {
+        // intentar obtener idToken; si falla, avisar y (opcional) probar sin Authorization para debug
+        let idToken = null;
+        try {
+          idToken = await idTokenPromise;
+          console.log('DEBUG: Obtenido idToken (long):', idToken ? idToken.length : 'no-token');
+        } catch (errToken) {
+          console.error('DEBUG: getIdToken falló:', errToken);
+          toast('Aviso: no se pudo obtener idToken (posible bloqueador). Comprueba extensiones o prueba en incógnito.', 'error', 5000);
+        }
+
+        console.log('DEBUG: Intentando enviar payload al worker', WORKER_URL);
+        console.log('DEBUG: payload', payload);
+
+        // Headers - si no tenemos idToken enviamos sólo Content-Type (debug fallback)
+        const headers = { 'Content-Type': 'application/json' };
+        if (idToken) headers['Authorization'] = 'Bearer ' + idToken;
+
+        try {
+          const resp = await fetch(WORKER_URL, { method: 'POST', headers, body: JSON.stringify(payload) });
+          const text = await resp.text().catch(() => '');
+          console.log('DEBUG: Worker response status=', resp.status, 'body=', text);
+          if (resp.ok) {
+            await updateDoc(registryRef, { processed: true, processedAt: serverTimestamp() }).catch(() => {});
+          } else {
+            console.error('Worker returned error', resp.status, text);
+            toast('Worker error: ' + resp.status + ' — ' + (text || resp.statusText), 'error', 6000);
+          }
+        } catch (errFetch) {
+          console.error('Worker fetch error:', errFetch);
+          toast('Worker fetch error: ' + (errFetch.message || errFetch), 'error', 6000);
+        }
+      }
+    } catch (errOuter) {
+      console.error('Error en la sección de envío al worker:', errOuter);
+    }
 
     // limpiar UI
     if (contenedorItems) contenedorItems.innerHTML = '';
     addItemRow();
-    if (buscarMiembroInput) { buscarMiembroInput.value = ''; buscarMiembroInput.dataset.id = ''; }
-    if (byId('actividad')) byId('actividad').value = '';
+
+    // limpiar typeahead y sugerencias
+    if (buscarMiembroInput) {
+      buscarMiembroInput.value = '';
+      buscarMiembroInput.dataset.id = '';
+    }
+    if (sugerenciasMiembro) {
+      sugerenciasMiembro.classList.remove('active');
+      sugerenciasMiembro.innerHTML = '';
+    }
+
+    // limpiar select actividad de forma robusta (actualiza también el custom-select)
+    const actividadEl = byId('actividad');
+    if (actividadEl) {
+      actividadEl.value = '';
+      // disparar change para que el trigger del custom select se actualice
+      actividadEl.dispatchEvent(new Event('change', { bubbles: true }));
+      // fallback: si existe el wrapper, forzamos el texto del trigger
+      const wrapper = actividadEl.nextElementSibling;
+      if (wrapper && wrapper.classList && wrapper.classList.contains('custom-select-wrapper')) {
+        const trigger = wrapper.querySelector('.custom-select-trigger');
+        const placeholderOpt = actividadEl.querySelector('option[value=""]');
+        if (trigger) trigger.textContent = placeholderOpt ? placeholderOpt.text : '-- selecciona --';
+      }
+    }
+
     toast('Registro guardado', 'info', 1400);
   } catch (err) {
     console.error(err); toast('Error guardando registro: ' + (err.message || err), 'error');
