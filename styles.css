@@ -58,15 +58,15 @@
   --ease-bounce: cubic-bezier(0.68, -0.55, 0.265, 1.55);
 
   /* Rangos Mejorados */
-  --rango-9: linear-gradient(135deg, #be185d, #d946ef);
-  --rango-8: linear-gradient(135deg, #a21caf, #c026d3);
-  --rango-7: linear-gradient(135deg, #059669, #10b981);
-  --rango-6: linear-gradient(135deg, #0d9488, #14b8a6);
-  --rango-5: linear-gradient(135deg, #f59e0b, #fbbf24);
-  --rango-4: linear-gradient(135deg, #f97316, #fb923c);
-  --rango-3: linear-gradient(135deg, #e5e5e5, #f5f5f5);
-  --rango-2: linear-gradient(135deg, #d4d4d4, #e5e5e5);
-  --rango-1: linear-gradient(135deg, #60a5fa, #3b82f6);
+  --rango-9: linear-gradient(135deg, #bb00cc, #bb3dc7);
+  --rango-8: linear-gradient(135deg, #00a700, #5cca5c);
+  --rango-7: linear-gradient(135deg, #00a700, #5cca5c);
+  --rango-6: linear-gradient(135deg, #ffa200, #ffd15d);
+  --rango-5: linear-gradient(135deg, #ffa200, #ffd15d);
+  --rango-4: linear-gradient(135deg, #3d34b9, #535eff);
+  --rango-3: linear-gradient(135deg, #3d34b9, #535eff);
+  --rango-2: linear-gradient(135deg, #3d34b9, #535eff);
+  --rango-1: linear-gradient(135deg, #e4e4e4, #c9c9c9);
 }
 
 [data-theme="light"] {
