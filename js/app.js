@@ -426,14 +426,23 @@ function renderCatalogo() {
     const valorFmt = formatNumber(Number(c.valorBase || 0));
     const pctBadge = (typeof c.pct === 'number') ? `<span class="pct-badge" title="Porcentaje fijo del item">${Math.round(c.pct * 100)}%</span>` : '';
 
+    // imagen: usar la definida en el item o fallback a default.png
+    const fileName = c.imagen ? String(c.imagen) : 'default.png';
+    const imageUrl = `./images/${encodeURIComponent(fileName)}`;
+
     el.innerHTML = `
-      <div style="display:flex;flex-direction:column;gap:0.25rem;min-width:0;">
-        <div style="display:flex;gap:0.5rem;align-items:center;">
-          <strong style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(c.nombre)}</strong>
-          ${pctBadge}
+      <div style="display:flex;gap:0.75rem;align-items:center;min-width:0;">
+        <div class="catalogo-image">
+          <img src="${escapeHtml(imageUrl)}" alt="${escapeHtml(c.nombre)}" loading="lazy" />
         </div>
-        <div class="small" style="margin-top:0.2rem;text-align:left;">
-          Valor por: ${valorFmt}${pagable}
+        <div style="display:flex;flex-direction:column;gap:0.25rem;min-width:0;">
+          <div style="display:flex;gap:0.5rem;align-items:center;">
+            <strong style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(c.nombre)}</strong>
+            ${pctBadge}
+          </div>
+          <div class="small" style="margin-top:0.2rem;text-align:left;">
+            Valor por: ${valorFmt}${pagable}
+          </div>
         </div>
       </div>
       <div style="display:flex;flex-direction:row;align-items:center;gap:0.5rem;">
