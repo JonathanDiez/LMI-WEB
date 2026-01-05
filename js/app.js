@@ -34,7 +34,7 @@ const listaCatalogoEl = byId('lista-catalogo');
 let ranks = {};
 let catalogo = [];
 let membersLocal = [];
-let inventoriesLocal = {}; // map userId -> array
+let inventoriesLocal = {};
 
 // unsub helpers
 let unsubscribeFns = [];
@@ -152,7 +152,8 @@ async function cargarDatosIniciales() {
 function watchCollectionsRealtime() {
   if (isWatching || !auth.currentUser) return;
   isWatching = true;
-  unsubscribeAll();
+  unsubscribeFns.forEach(f => { try { f(); } catch {} });
+  unsubscribeFns = [];
 
   addUnsub(onSnapshot(collection(db, 'items'), snap => {
     catalogo = []; snap.forEach(d => catalogo.push({ id: d.id, ...d.data() })); renderCatalogo();
@@ -187,24 +188,123 @@ function createCustomSelectFromNative(selectEl) {
   const wrapper = document.createElement('div'); wrapper.className = 'custom-select-wrapper';
   const trigger = document.createElement('button'); trigger.type = 'button'; trigger.className = 'custom-select-trigger btn-sec';
   const placeholderOpt = selectEl.querySelector('option[value=""]');
-  trigger.textContent = (selectEl.selectedIndex >= 0 && selectEl.options[selectEl.selectedIndex]) ? selectEl.options[selectEl.selectedIndex].text : (placeholderOpt ? placeholderOpt.text : '-- selecciona --');
+
+  const textSpan = document.createElement('span');
+  textSpan.className = 'custom-select-text';
+  textSpan.textContent = (selectEl.selectedIndex >= 0 && selectEl.options[selectEl.selectedIndex]) ? selectEl.options[selectEl.selectedIndex].text : (placeholderOpt ? placeholderOpt.text : '-- selecciona --');
+
+  const thumb = document.createElement('img');
+  thumb.className = 'custom-select-thumb';
+  // tamaño controlado por CSS; JS mantiene solo comportamiento
+  thumb.style.objectFit = 'cover';
+  thumb.style.borderRadius = '6px';
+  thumb.style.marginRight = '0.5rem';
+  thumb.style.display = 'none';
+
+  if (selectEl.classList.contains('sel-item')) {
+    const curOpt = selectEl.options[selectEl.selectedIndex];
+    if (curOpt && curOpt.dataset && curOpt.dataset.image) {
+      thumb.src = curOpt.dataset.image;
+      thumb.style.display = '';
+    }
+    trigger.appendChild(thumb);
+  }
+  trigger.appendChild(textSpan);
 
   const list = document.createElement('div'); list.className = 'sugerencias';
+  list.style.maxHeight = '220px';
+  list.style.overflowY = 'auto';
+
+  let searchInput = null;
+  const enableSearch = selectEl.classList.contains('sel-item');
+  if (enableSearch) {
+    searchInput = document.createElement('input');
+    searchInput.type = 'text';
+    searchInput.placeholder = 'Filtrar objetos...';
+    searchInput.className = 'custom-select-search';
+    searchInput.style.width = '100%';
+    searchInput.style.boxSizing = 'border-box';
+    searchInput.style.padding = '6px 8px';
+    searchInput.style.marginBottom = '6px';
+    list.appendChild(searchInput);
+  }
+
   Array.from(selectEl.options).forEach(opt => {
     if (opt.value === '') return;
-    const item = document.createElement('div'); item.textContent = opt.text; item.dataset.value = opt.value;
-    item.addEventListener('click', (ev) => { ev.stopPropagation(); trigger.textContent = opt.text; selectEl.value = opt.value; list.classList.remove('active'); selectEl.dispatchEvent(new Event('change', { bubbles: true })); });
+    const item = document.createElement('div');
+    item.textContent = opt.text;
+    if (opt.dataset && opt.dataset.value) item.dataset.value = opt.dataset.value;
+    item.dataset.value = opt.value;
+    if (opt.dataset && opt.dataset.image) item.dataset.image = opt.dataset.image;
+    item.tabIndex = 0;
+
+    item.addEventListener('click', (ev) => {
+      ev.stopPropagation();
+      selectEl.value = opt.value;
+      textSpan.textContent = opt.text;
+      if (opt.dataset && opt.dataset.image) {
+        thumb.src = opt.dataset.image;
+        thumb.style.display = '';
+      } else {
+        thumb.style.display = 'none';
+      }
+      list.classList.remove('active');
+      wrapper.classList.remove('open'); // cerrar visualmente el wrapper también
+      selectEl.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+
+    item.addEventListener('keydown', (ev) => { if (ev.key === 'Enter') item.click(); });
     list.appendChild(item);
   });
 
   selectEl.parentNode.insertBefore(wrapper, selectEl.nextSibling);
   wrapper.appendChild(trigger); wrapper.appendChild(list);
-  trigger.addEventListener('click', ev => { ev.stopPropagation(); document.querySelectorAll('.sugerencias.active').forEach(s => { if (s !== list) s.classList.remove('active'); }); list.classList.toggle('active'); });
-  document.addEventListener('click', () => list.classList.remove('active'));
+
+  // abrir/cerrar: toggle .active en lista y .open en wrapper; cierra otros selects abiertos
+  trigger.addEventListener('click', ev => {
+    ev.stopPropagation();
+
+    // cerrar otros selects abiertos
+    document.querySelectorAll('.custom-select-wrapper.open').forEach(w => {
+      if (w !== wrapper) {
+        w.classList.remove('open');
+        const l = w.querySelector('.sugerencias');
+        if (l) l.classList.remove('active');
+      }
+    });
+
+    const now = list.classList.toggle('active');
+    wrapper.classList.toggle('open', now);
+
+    if (now && searchInput) {
+      searchInput.focus();
+      searchInput.select();
+    }
+  });
+
+  // actualizar visual al cambiar desde código
   selectEl.addEventListener('change', () => {
     const cur = selectEl.options[selectEl.selectedIndex];
-    trigger.textContent = cur ? cur.text : (placeholderOpt ? placeholderOpt.text : '-- selecciona --');
+    textSpan.textContent = cur ? cur.text : (placeholderOpt ? placeholderOpt.text : '-- selecciona --');
+    if (cur && cur.dataset && cur.dataset.image) {
+      thumb.src = cur.dataset.image;
+      thumb.style.display = '';
+    } else {
+      thumb.style.display = 'none';
+    }
   });
+
+  // búsqueda/filtrado simple (si aplica)
+  if (searchInput) {
+    searchInput.addEventListener('input', (e) => {
+      const q = (e.target.value || '').trim().toLowerCase();
+      Array.from(list.querySelectorAll('div')).forEach(node => {
+        if (!node.dataset || !node.dataset.value) return;
+        const text = (node.textContent || '').toLowerCase();
+        node.style.display = q ? (text.includes(q) ? '' : 'none') : '';
+      });
+    });
+  }
 }
 
 // ------------------ Items UI ------------------
@@ -214,14 +314,20 @@ function addItemRow() {
   const sel = document.createElement('select'); sel.className = 'sel-item';
   const placeholder = document.createElement('option'); placeholder.value = ''; placeholder.textContent = '-- Selecciona un objeto --';
   sel.appendChild(placeholder);
+
   if (catalogo.length) {
     catalogo.forEach(c => {
-      const opt = document.createElement('option'); opt.value = c.id; opt.textContent = `${c.nombre} - ${formatNumber(Number(c.valorBase || 0))} $`;
+      const opt = document.createElement('option'); opt.value = c.id;
+      opt.textContent = `${c.nombre} - ${formatNumber(Number(c.valorBase || 0))} $`;
+      const fileName = c.imagen ? String(c.imagen) : 'default.png';
+      const imageUrl = `./images/${encodeURIComponent(fileName)}`;
+      opt.dataset.image = imageUrl;
       sel.appendChild(opt);
     });
   } else {
     const opt = document.createElement('option'); opt.disabled = true; opt.textContent = '— No hay items en catálogo —'; sel.appendChild(opt);
   }
+
   const qty = document.createElement('input'); qty.className = 'qty-item'; qty.type = 'number'; qty.min = 1; qty.value = 1;
   const btnRemove = document.createElement('button'); btnRemove.className = 'btn-remove-item'; btnRemove.type = 'button'; btnRemove.title = 'Quitar fila'; btnRemove.textContent = '✖';
   btnRemove.addEventListener('click', () => row.remove());
@@ -230,21 +336,19 @@ function addItemRow() {
   contenedorItems.appendChild(row);
   createCustomSelectFromNative(sel);
 }
+
 byId('btn-add-item')?.addEventListener('click', addItemRow);
 
 // ------------------ Form submit ------------------
 byId('form-registro')?.addEventListener('submit', async (e) => {
   e.preventDefault();
 
-  // preferir id seleccionado por el typeahead
   const chosenId = buscarMiembroInput?.dataset?.id;
   let member = null;
 
   if (chosenId) {
     member = membersLocal.find(m => m.id === chosenId) || null;
   } else {
-    // buscar por texto (case-insensitive). Primero intentamos coincidencia exacta,
-    // luego búsqueda por includes (parcial).
     const q = (buscarMiembroInput?.value || '').trim().toLowerCase();
     if (q) {
       member = membersLocal.find(m => ((m.displayName || '').toLowerCase() === q) || ((m.username || '').toLowerCase() === q)) || null;
@@ -281,7 +385,6 @@ byId('form-registro')?.addEventListener('submit', async (e) => {
       processed: false
     });
 
-    // upsert inventories
     for (const it of items) {
       const q2 = query(collection(db, 'inventories'), where('userId', '==', member.id), where('itemId', '==', it.itemId));
       const snap = await getDocs(q2);
@@ -307,15 +410,13 @@ byId('form-registro')?.addEventListener('submit', async (e) => {
     }
     const lootSummary = lootParts.join(', ');
 
-    // enviar worker (robusto, con logging y fallback para debug)
     try {
       let authorName = auth.currentUser.email || auth.currentUser.uid;
       try {
         const admSnap = await getDoc(doc(db, 'admins', auth.currentUser.uid));
         if (admSnap.exists() && admSnap.data().displayName) authorName = admSnap.data().displayName;
-      } catch (e) { /* ignore */ }
+      } catch (e) { }
 
-      // Construir payload
       const idTokenPromise = getIdToken(auth.currentUser, true);
       const payload = {
         registryId: registryRef.id,
@@ -331,11 +432,9 @@ byId('form-registro')?.addEventListener('submit', async (e) => {
         createdAt: new Date().toISOString()
       };
 
-      // Comprobaciones básicas
       if (typeof WORKER_URL === 'undefined' || !WORKER_URL) {
         console.warn('DEBUG: WORKER_URL no está definido — salto el envío al worker (define WORKER_URL arriba del script).');
       } else {
-        // intentar obtener idToken; si falla, avisar y (opcional) probar sin Authorization para debug
         let idToken = null;
         try {
           idToken = await idTokenPromise;
@@ -348,7 +447,6 @@ byId('form-registro')?.addEventListener('submit', async (e) => {
         console.log('DEBUG: Intentando enviar payload al worker', WORKER_URL);
         console.log('DEBUG: payload', payload);
 
-        // Headers - si no tenemos idToken enviamos sólo Content-Type (debug fallback)
         const headers = { 'Content-Type': 'application/json' };
         if (idToken) headers['Authorization'] = 'Bearer ' + idToken;
 
@@ -357,7 +455,7 @@ byId('form-registro')?.addEventListener('submit', async (e) => {
           const text = await resp.text().catch(() => '');
           console.log('DEBUG: Worker response status=', resp.status, 'body=', text);
           if (resp.ok) {
-            await updateDoc(registryRef, { processed: true, processedAt: serverTimestamp() }).catch(() => {});
+            await updateDoc(registryRef, { processed: true, processedAt: serverTimestamp() }).catch(() => { });
           } else {
             console.error('Worker returned error', resp.status, text);
             toast('Worker error: ' + resp.status + ' — ' + (text || resp.statusText), 'error', 6000);
@@ -371,11 +469,9 @@ byId('form-registro')?.addEventListener('submit', async (e) => {
       console.error('Error en la sección de envío al worker:', errOuter);
     }
 
-    // limpiar UI
     if (contenedorItems) contenedorItems.innerHTML = '';
     addItemRow();
 
-    // limpiar typeahead y sugerencias
     if (buscarMiembroInput) {
       buscarMiembroInput.value = '';
       buscarMiembroInput.dataset.id = '';
@@ -385,18 +481,16 @@ byId('form-registro')?.addEventListener('submit', async (e) => {
       sugerenciasMiembro.innerHTML = '';
     }
 
-    // limpiar select actividad de forma robusta (actualiza también el custom-select)
     const actividadEl = byId('actividad');
     if (actividadEl) {
       actividadEl.value = '';
-      // disparar change para que el trigger del custom select se actualice
       actividadEl.dispatchEvent(new Event('change', { bubbles: true }));
-      // fallback: si existe el wrapper, forzamos el texto del trigger
       const wrapper = actividadEl.nextElementSibling;
       if (wrapper && wrapper.classList && wrapper.classList.contains('custom-select-wrapper')) {
         const trigger = wrapper.querySelector('.custom-select-trigger');
         const placeholderOpt = actividadEl.querySelector('option[value=""]');
-        if (trigger) trigger.textContent = placeholderOpt ? placeholderOpt.text : '-- selecciona --';
+        const text = trigger.querySelector('.custom-select-text');
+        if (text) text.textContent = placeholderOpt ? placeholderOpt.text : '-- selecciona --';
       }
     }
 
@@ -417,44 +511,73 @@ function renderSelectRangos() {
 function renderCatalogo() {
   const lista = listaCatalogoEl || byId('lista-catalogo');
   if (!lista) return;
+
   lista.innerHTML = '';
-  if (!catalogo.length) { lista.innerHTML = '<p class="sub">No hay items en el catálogo</p>'; return; }
+  if (!catalogo.length) {
+    lista.innerHTML = '<p class="sub">No hay items en el catálogo</p>';
+    return;
+  }
 
   catalogo.forEach(c => {
-    const el = document.createElement('div'); el.className = 'catalogo-item';
+    const el = document.createElement('div');
+    el.className = 'catalogo-item';
+
     const pagable = (c.pagable === false) ? ' • No pagable' : '';
     const valorFmt = formatNumber(Number(c.valorBase || 0));
-    const pctBadge = (typeof c.pct === 'number') ? `<span class="pct-badge" title="Porcentaje fijo del item">${Math.round(c.pct * 100)}%</span>` : '';
+    const pctBadge = (typeof c.pct === 'number')
+      ? `<span class="pct-badge" title="Porcentaje fijo del item">${Math.round(c.pct * 100)}%</span>`
+      : '';
 
-    // imagen: usar la definida en el item o fallback a default.png
     const fileName = c.imagen ? String(c.imagen) : 'default.png';
     const imageUrl = `./images/${encodeURIComponent(fileName)}`;
 
     el.innerHTML = `
       <div style="display:flex;gap:0.75rem;align-items:center;min-width:0;">
         <div class="catalogo-image">
-          <img src="${escapeHtml(imageUrl)}" alt="${escapeHtml(c.nombre)}" loading="lazy" />
+          <img
+            src="${escapeHtml(imageUrl)}"
+            alt="${escapeHtml(c.nombre)}"
+            loading="lazy"
+          />
         </div>
+
         <div style="display:flex;flex-direction:column;gap:0.25rem;min-width:0;">
-          <div style="display:flex;gap:0.5rem;align-items:center;">
-            <strong style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(c.nombre)}</strong>
+          <div style="display:flex;gap:0.5rem;align-items:center;min-width:0;">
+            <strong style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
+              ${escapeHtml(c.nombre)}
+            </strong>
             ${pctBadge}
           </div>
+
           <div class="small" style="margin-top:0.2rem;text-align:left;">
             Valor por: ${valorFmt}${pagable}
           </div>
         </div>
       </div>
+
       <div style="display:flex;flex-direction:row;align-items:center;gap:0.5rem;">
-        <span class="value-badge" title="Valor del item" style="font-weight:700;padding:0.25rem 0.5rem;border-radius:8px;border:1px solid var(--border);min-width:70px;text-align:right;">${valorFmt} $</span>
+        <span
+          class="value-badge"
+          title="Valor del item"
+          style="font-weight:700;padding:0.25rem 0.5rem;border-radius:8px;border:1px solid var(--border);min-width:70px;text-align:right;"
+        >
+          ${valorFmt} $
+        </span>
         <button class="btn-delete" data-id="${c.id}">🗑️</button>
       </div>
     `;
+
     el.querySelector('.btn-delete')?.addEventListener('click', async () => {
       if (!confirm('¿Borrar objeto del catálogo?')) return;
-      try { await deleteDoc(doc(db, 'items', c.id)); toast('Objeto eliminado'); }
-      catch (err) { console.error(err); toast('Error borrando item: ' + (err.message || err), 'error'); }
+      try {
+        await deleteDoc(doc(db, 'items', c.id));
+        toast('Objeto eliminado');
+      } catch (err) {
+        console.error(err);
+        toast('Error borrando item: ' + (err.message || err), 'error');
+      }
     });
+
     lista.appendChild(el);
   });
 }
@@ -556,29 +679,25 @@ function createMemberCard(member) {
     });
   }
 
-  // Toggle 500 - botón interactivo
+  // Toggle 500 - botón
   const btnToggle = card.querySelector('.btn-toggle-500');
   if (btnToggle) {
     btnToggle.addEventListener('click', async (e) => {
       e.stopPropagation();
       const id = btnToggle.dataset.id;
       if (!id) return;
-      // estado actual desde memoria local (fallback a false)
       const memberLocal = membersLocal.find(m => m.id === id) || member;
       const current = !!memberLocal.tiene500;
       const next = !current;
 
-      // optimista: actualizar UI inmediatamente
       btnToggle.textContent = next ? '🎖️ 500' : '➕ 500';
       btnToggle.classList.toggle('active', next);
 
       try {
         await updateDoc(doc(db, 'profiles', id), { tiene500: next });
-        // actualizar memoria local inmediatamente
         if (memberLocal) memberLocal.tiene500 = next;
         toast(`500 aportaciones ${next ? 'activadas' : 'desactivadas'}`, 'info', 1400);
       } catch (err) {
-        // revertir UI en caso de fallo
         btnToggle.textContent = current ? '🎖️ 500' : '➕ 500';
         btnToggle.classList.toggle('active', current);
         console.error('Error toggling tiene500:', err);
@@ -586,7 +705,6 @@ function createMemberCard(member) {
       }
     });
 
-    // reflejar estado inicial de forma visual
     if (member.tiene500) btnToggle.classList.add('active');
     else btnToggle.classList.remove('active');
   }
@@ -633,18 +751,15 @@ document.addEventListener('click', (e) => {
   if (sugerenciasMiembro) sugerenciasMiembro.classList.remove('active');
 });
 
-// Modal inventario (control consistente show/hide)
 const modal = byId('modal-inventario');
 const modalClose = byId('modal-close');
 
-// Cerrar con el botón: quitar clase .active y ocultar
 modalClose?.addEventListener('click', () => {
   if (!modal) return;
   modal.classList.remove('active');
   modal.hidden = true;
 });
 
-// Click fuera del contenido -> cerrar igual
 modal?.addEventListener('click', (e) => {
   if (e.target === modal) {
     modal.classList.remove('active');
@@ -668,7 +783,6 @@ async function mostrarInventarioMiembro(miembro) {
 
     const totalObjetos = items.reduce((s, it) => s + (Number(it.qty) || 0), 0);
 
-    // Calculamos totalValor (0 si no hay items)
     let totalValor = 0;
     for (const it of items) {
       const itemMeta = catalogo.find(ci => ci.id === it.itemId) || {};
@@ -679,7 +793,6 @@ async function mostrarInventarioMiembro(miembro) {
     }
     const totalValorFmt = formatNumber(totalValor);
 
-    // Preparar header del modal (siempre lo actualizamos)
     const rangoNombre = miembro.rankId || '—';
     const basePctDisplay = Math.round(basePct * 100);
     let badgeInside = `${basePctDisplay}%`;
@@ -687,13 +800,11 @@ async function mostrarInventarioMiembro(miembro) {
       badgeInside = `${basePctDisplay}% + ${extraPct}% POR 500 APORTACIONES`;
     }
 
-    // modal-titulo: RANGO (mayúsculas + negrita) + badge
     byId('modal-titulo').innerHTML = `
       <span style="font-weight:800;letter-spacing:0.5px;text-transform:uppercase;">${escapeHtml(String(rangoNombre))}</span>
       <span class="rango-badge-detail" style="margin-left:0.5rem;padding:4px 8px;border-radius:8px;border:1px solid var(--border);font-weight:700;">[${escapeHtml(badgeInside)}]</span>
     `;
 
-    // modal-subtitulo: nombre del miembro (secundario)
     byId('modal-subtitulo').innerHTML = `
       <span style="font-weight:600;opacity:0.95;">${escapeHtml(miembro.displayName || miembro.username || miembro.id)}</span>
     `;
@@ -701,7 +812,6 @@ async function mostrarInventarioMiembro(miembro) {
     const body = byId('modal-body');
     if (!body) { console.error('DEBUG: modal-body no encontrado en DOM'); toast('Error: modal no configurado en el HTML', 'error'); return; }
 
-    // Si hay items, renderizamos tarjetas; si no, mostramos mensaje coherente
     let itemCards = '';
     if (items.length) {
       itemCards = items.map(it => {
@@ -710,11 +820,9 @@ async function mostrarInventarioMiembro(miembro) {
         const eff = (pctItem !== null) ? pctItem : pctRankEffective;
         const valorUnit = Math.round((itemMeta.valorBase || 0) * (eff || 1));
 
-        // imagen local o default
         const fileName = itemMeta.imagen ? String(itemMeta.imagen) : 'default.png';
         const imageUrl = `./images/${encodeURIComponent(fileName)}`;
 
-        // porcentaje item (si existe) en negrita
         const pctHtml = pctItem !== null ? ` <strong class="pct-strong">(${Math.round(pctItem * 100)}%)</strong>` : '';
 
         return `
@@ -736,7 +844,6 @@ async function mostrarInventarioMiembro(miembro) {
       }).join('');
     }
 
-    // Construir la parte superior (siempre): Objetos (izq) | Vaciar + Valor total (der)
     body.innerHTML = `
       <div class="modal-top" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;gap:1rem;">
         <div style="display:flex;align-items:center;gap:0.75rem;">
@@ -753,7 +860,6 @@ async function mostrarInventarioMiembro(miembro) {
       ${items.length ? `<div class="inventario-items">${itemCards}</div>` : `<p class="sub">Este miembro no tiene objetos en su inventario</p>`}
     `;
 
-    // Delegación local para decrementar items (dentro del modal)
     body.onclick = async (e) => {
       const btn = e.target.closest('.item-delete');
       if (!btn) return;
@@ -770,7 +876,6 @@ async function mostrarInventarioMiembro(miembro) {
       } catch (err) { console.error(err); toast('Error al quitar 1 unidad: ' + (err.message || err), 'error'); }
     };
 
-    // Evitar listeners duplicados en clear-inventory (si existe, la clonamos y reasignamos)
     const existingClear = byId('clear-inventory');
     if (existingClear) {
       const clone = existingClear.cloneNode(true);
@@ -784,7 +889,6 @@ async function mostrarInventarioMiembro(miembro) {
       });
     }
 
-    // abrir modal de forma robusta
     const modalEl = byId('modal-inventario');
     if (modalEl) {
       modalEl.hidden = false;
@@ -827,10 +931,8 @@ byId('btn-crear-catalogo')?.addEventListener('click', async () => {
 
   if (!nombre || valor <= 0) return toast('Nombre y valor válidos requeridos', 'error');
 
-  // normalizamos el id (declarado antes de su uso)
   const itemId = nombre.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-_]/g, '');
 
-  // parseo del porcentaje (si existe)
   let pct = null;
   if (pctInput !== '') {
     const n = Number(pctInput);
@@ -844,22 +946,38 @@ byId('btn-crear-catalogo')?.addEventListener('click', async () => {
   try {
     await setDoc(doc(db, 'items', itemId), docData);
     toast('Objeto agregado al catálogo');
-    // limpiar inputs
     if (byId('cat-nombre')) byId('cat-nombre').value = '';
     if (byId('cat-valor')) byId('cat-valor').value = '';
     if (byId('cat-pct')) byId('cat-pct').value = '';
     if (byId('cat-pagable')) byId('cat-pagable').checked = true;
     if (byId('cat-imagen')) byId('cat-imagen').value = '';
-    // si usas realtime, el catálogo se actualizará automáticamente; si no, podrías llamar a cargarDatosIniciales() o renderCatalogo()
   } catch (err) {
     console.error(err);
     toast('Error creando item: ' + (err.message || err), 'error');
   }
 });
 
+document.addEventListener('click', (e) => {
+  document.querySelectorAll('.custom-select-wrapper.open').forEach(w => {
+    if (!w.contains(e.target)) {
+      w.classList.remove('open');
+      const l = w.querySelector('.sugerencias');
+      if (l) l.classList.remove('active');
+    }
+  });
+});
+
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') {
+    document.querySelectorAll('.custom-select-wrapper.open').forEach(w => {
+      w.classList.remove('open');
+      w.querySelector('.sugerencias')?.classList.remove('active');
+    });
+  }
+});
+
 // ------------------ Init UI ------------------
 document.addEventListener('DOMContentLoaded', () => {
-  // --- Inicializar vista activa o por defecto ---
   const activeNav = document.querySelector('.nav-btn.active');
   if (!activeNav) {
     const first = document.querySelector('.nav-btn[data-view]');
@@ -873,22 +991,17 @@ document.addEventListener('DOMContentLoaded', () => {
     if (cur) switchToView(cur);
   }
 
-  // --- Inicializar custom select de actividad ---
   const actividadSel = byId('actividad');
   if (actividadSel) createCustomSelectFromNative(actividadSel);
 
-  // --- Botón visual para "Tiene 500 aportaciones" ---
   (function initMi500Toggle() {
     const chk = byId('mi-500');
     if (!chk) return;
 
-    // buscar label contenedor o usar el padre
     const labelWrap = chk.closest('.checkbox-label') || chk.parentNode;
 
-    // ocultar checkbox real
     chk.style.display = 'none';
 
-    // crear botón visual
     const btn = document.createElement('button');
     btn.type = 'button';
     btn.id = 'mi-500-btn';
@@ -908,7 +1021,6 @@ document.addEventListener('DOMContentLoaded', () => {
     btn.appendChild(icon);
     btn.appendChild(txt);
 
-    // insertar el botón en el label o junto al checkbox
     if (labelWrap) {
       const existingSpan = labelWrap.querySelector('span');
       if (existingSpan) existingSpan.remove();
@@ -917,7 +1029,6 @@ document.addEventListener('DOMContentLoaded', () => {
       chk.parentNode.insertBefore(btn, chk.nextSibling);
     }
 
-    // sincronizar apariencia
     const syncBtn = () => {
       const is = !!chk.checked;
       icon.textContent = is ? '🏆' : '❌';
@@ -926,7 +1037,6 @@ document.addEventListener('DOMContentLoaded', () => {
       btn.setAttribute('aria-pressed', is ? 'true' : 'false');
     };
 
-    // toggle manual
     btn.addEventListener('click', () => {
       chk.checked = !chk.checked;
       syncBtn();
@@ -936,25 +1046,20 @@ document.addEventListener('DOMContentLoaded', () => {
     syncBtn();
   })();
 
-  // --- Forzar carga inicial si no hay datos ---
   if (!membersLocal.length) cargarDatosIniciales().catch(() => { });
 });
 
-// filtrar lista de Miembros en tiempo real (panel "Miembros")
 byId('filtro-miembros')?.addEventListener('input', (e) => {
   const q = (e.target.value || '').trim();
   renderMiembros(q);
-  // opcional: también filtrar la grid de inventarios para mantener coherencia
   renderInventariosGrid(q);
 });
 
-// filtrar inventarios (panel "Inventarios")
 byId('buscador-inventario')?.addEventListener('input', (e) => {
   const q = (e.target.value || '').trim();
   renderInventariosGrid(q);
 });
 
-// --- Botón de cambio de tema ---
 if (!document.querySelector('.theme-toggle')) {
   const themeToggle = document.createElement('button');
   themeToggle.className = 'theme-toggle';
