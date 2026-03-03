@@ -11,7 +11,7 @@ import {
   getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged, getIdToken
 } from 'https://www.gstatic.com/firebasejs/9.22.2/firebase-auth.js';
 
-// INIT
+// INIT - Actualizado 04/03
 const WORKER_URL = 'https://inventario-lm-worker.ggoldenhhands.workers.dev/';
 const app = initializeApp(FIREBASE_CONFIG);
 const db = getFirestore(app);
