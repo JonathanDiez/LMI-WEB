@@ -425,10 +425,10 @@ byId('form-registro')?.addEventListener('submit', async (e) => {
         authorName,
         memberId: member.id,
         memberName: member.displayName || member.username || member.id,
-        actividad,
-        items,
-        lootSummary,
-        totalValor,
+        activity: actividad,
+        items: items,
+        lootSummary: lootSummary,
+        totalValue: totalValor,
         createdAt: new Date().toISOString()
       };
 
