@@ -1,320 +1,351 @@
-(function() {
+(function () {
   'use strict';
-  
+
+  // ====================================
+  // AUDIO ENGINE — Web Audio API (sin archivos externos)
+  // ====================================
+
+  let audioCtx = null;
+
+  function getAudioCtx() {
+    if (!audioCtx) {
+      try {
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      } catch (e) { return null; }
+    }
+    if (audioCtx.state === 'suspended') {
+      audioCtx.resume().catch(() => {});
+    }
+    return audioCtx;
+  }
+
+  /**
+   * Genera un tono sintético breve.
+   * @param {number} freq - Frecuencia Hz
+   * @param {number} duration - Duración en segundos
+   * @param {'sine'|'square'|'sawtooth'|'triangle'} type - Forma de onda
+   * @param {number} gain - Volumen (0-1)
+   * @param {number} attack - Tiempo de ataque s
+   * @param {number} decay - Tiempo de caída s
+   */
+  function playTone(freq = 440, duration = 0.12, type = 'sine', gain = 0.12, attack = 0.004, decay = 0.1) {
+    const ctx = getAudioCtx();
+    if (!ctx) return;
+
+    const osc = ctx.createOscillator();
+    const gainNode = ctx.createGain();
+
+    osc.connect(gainNode);
+    gainNode.connect(ctx.destination);
+
+    osc.type = type;
+    osc.frequency.setValueAtTime(freq, ctx.currentTime);
+
+    gainNode.gain.setValueAtTime(0, ctx.currentTime);
+    gainNode.gain.linearRampToValueAtTime(gain, ctx.currentTime + attack);
+    gainNode.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + duration);
+
+    osc.start(ctx.currentTime);
+    osc.stop(ctx.currentTime + duration);
+  }
+
+  function playChord(freqs, duration = 0.15, type = 'sine', gain = 0.08) {
+    freqs.forEach(f => playTone(f, duration, type, gain));
+  }
+
+  // Sonidos predefinidos
+  const SFX = {
+    click() {
+      playTone(880, 0.06, 'sine', 0.08, 0.002, 0.055);
+    },
+    navClick() {
+      playTone(660, 0.09, 'sine', 0.09, 0.003, 0.08);
+      setTimeout(() => playTone(880, 0.07, 'sine', 0.06, 0.002, 0.06), 60);
+    },
+    success() {
+      playTone(523, 0.1, 'sine', 0.10, 0.003, 0.09);
+      setTimeout(() => playTone(659, 0.1, 'sine', 0.09, 0.003, 0.09), 80);
+      setTimeout(() => playTone(784, 0.15, 'sine', 0.10, 0.003, 0.13), 160);
+    },
+    error() {
+      playTone(200, 0.14, 'sawtooth', 0.08, 0.004, 0.12);
+      setTimeout(() => playTone(150, 0.14, 'sawtooth', 0.07, 0.003, 0.12), 100);
+    },
+    delete() {
+      playTone(330, 0.06, 'triangle', 0.08, 0.002, 0.055);
+      setTimeout(() => playTone(220, 0.10, 'triangle', 0.07, 0.003, 0.09), 50);
+    },
+    open() {
+      playTone(440, 0.08, 'sine', 0.07, 0.003, 0.07);
+      setTimeout(() => playTone(550, 0.07, 'sine', 0.06, 0.002, 0.06), 55);
+    },
+    close() {
+      playTone(550, 0.07, 'sine', 0.07, 0.003, 0.06);
+      setTimeout(() => playTone(440, 0.08, 'sine', 0.06, 0.002, 0.07), 55);
+    },
+    toggle() {
+      playTone(660, 0.08, 'triangle', 0.08, 0.002, 0.07);
+    },
+    submit() {
+      playTone(440, 0.1, 'sine', 0.10, 0.003, 0.09);
+      setTimeout(() => playTone(554, 0.1, 'sine', 0.09, 0.003, 0.09), 90);
+      setTimeout(() => playTone(659, 0.14, 'sine', 0.11, 0.003, 0.12), 180);
+    },
+    addRow() {
+      playTone(500, 0.08, 'sine', 0.07, 0.002, 0.07);
+    },
+    theme() {
+      playTone(440, 0.07, 'sine', 0.07, 0.002, 0.06);
+      setTimeout(() => playTone(880, 0.09, 'sine', 0.06, 0.002, 0.08), 70);
+    }
+  };
+
+  // Activar contexto de audio al primer gesto del usuario
+  function unlockAudio() {
+    getAudioCtx();
+    document.removeEventListener('pointerdown', unlockAudio, { once: true });
+  }
+  document.addEventListener('pointerdown', unlockAudio, { once: true });
+
+  // ====================================
+  // BIND DE SONIDOS A ELEMENTOS DEL DOM
+  // ====================================
+
+  function bindSounds() {
+    // Delegación global para no romper eventos existentes
+    document.addEventListener('click', (e) => {
+      const el = e.target;
+
+      // Botones de navegación
+      if (el.closest('.nav-btn')) { SFX.navClick(); return; }
+
+      // Theme toggle
+      if (el.closest('.theme-toggle')) { SFX.theme(); return; }
+
+      // Botón añadir fila de item
+      if (el.id === 'btn-add-item') { SFX.addRow(); return; }
+
+      // Submit form
+      if (el.closest('#form-registro button[type="submit"]')) { SFX.submit(); return; }
+
+      // Botones de eliminar
+      if (el.closest('.btn-delete') || el.closest('.btn-remove-item') || el.closest('.item-delete')) {
+        SFX.delete(); return;
+      }
+
+      // Toggle 500
+      if (el.closest('.btn-toggle-500') || el.closest('.mi-500-btn')) { SFX.toggle(); return; }
+
+      // Cerrar modal
+      if (el.closest('.modal-close') || el.closest('#modal-close')) { SFX.close(); return; }
+
+      // Abrir inventario card
+      if (el.closest('.inventario-card') && !el.closest('button')) { SFX.open(); return; }
+
+      // Crear miembro / catálogo
+      if (el.id === 'btn-crear-miembro' || el.id === 'btn-crear-catalogo') { SFX.success(); return; }
+
+      // Editar item
+      if (el.closest('.btn-edit-item')) { SFX.click(); return; }
+
+      // Logout
+      if (el.id === 'btn-logout' || el.id === 'btn-logout-sidebar' || el.closest('.nav-logout')) { SFX.close(); return; }
+
+      // Login
+      if (el.id === 'btn-entrar') { SFX.click(); return; }
+
+      // Custom select trigger (abrir/cerrar dropdown)
+      if (el.closest('.custom-select-trigger')) { SFX.click(); return; }
+
+      // Genérico para botones primarios y secundarios
+      if (el.closest('.btn-pri') || el.closest('.btn-sec')) { SFX.click(); return; }
+
+    }, true); // capture = true para que no interfiera con stopPropagation existente
+  }
+
+  // Interceptar toasts para añadir sonido según tipo
+  function patchToastSound() {
+    const container = document.getElementById('toasts');
+    if (!container) return;
+
+    const obs = new MutationObserver((mutations) => {
+      mutations.forEach(m => {
+        m.addedNodes.forEach(node => {
+          if (node.nodeType !== 1) return;
+          if (node.classList.contains('error')) { SFX.error(); }
+          else if (node.classList.contains('success')) { SFX.success(); }
+        });
+      });
+    });
+    obs.observe(container, { childList: true });
+  }
+
   // ====================================
   // SISTEMA DE TEMAS
   // ====================================
-  
+
   function initThemeSystem() {
-    // Crear el botón de toggle si no existe
-    function createThemeToggle() {
-      if (document.querySelector('.theme-toggle')) return;
-      
-      const toggle = document.createElement('button');
-      toggle.className = 'theme-toggle';
-      toggle.setAttribute('aria-label', 'Cambiar tema');
-      toggle.setAttribute('title', 'Cambiar tema (Ctrl+T)');
-      document.body.appendChild(toggle);
-      
-      return toggle;
-    }
-    
-    // Obtener tema guardado o preferencia del sistema
     function getSavedTheme() {
       const saved = localStorage.getItem('theme');
       if (saved) return saved;
-      
-      if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
-        return 'dark';
-      }
-      
-      return 'light';
+      return window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'dark';
     }
-    
-    // Aplicar tema
+
     function applyTheme(theme) {
-      const html = document.documentElement;
-      html.style.transition = 'all 0.3s ease';
-      html.setAttribute('data-theme', theme);
+      document.documentElement.setAttribute('data-theme', theme);
       localStorage.setItem('theme', theme);
-      
-      window.dispatchEvent(new CustomEvent('themechange', { detail: { theme } }));
-    }
-    
-    // Cambiar tema
-    function toggleTheme() {
-      const current = document.documentElement.getAttribute('data-theme') || 'light';
-      const newTheme = current === 'light' ? 'dark' : 'light';
-      applyTheme(newTheme);
-      
       const toggle = document.querySelector('.theme-toggle');
-      if (toggle) {
-        toggle.style.transform = 'scale(0.9) rotate(180deg)';
-        setTimeout(() => {
-          toggle.style.transform = '';
-        }, 300);
-      }
+      if (toggle) toggle.innerHTML = theme === 'dark' ? '🌙' : '☀️';
     }
-    
-    // Atajo de teclado
+
+    function toggleTheme() {
+      const current = document.documentElement.getAttribute('data-theme') || 'dark';
+      applyTheme(current === 'dark' ? 'light' : 'dark');
+    }
+
     document.addEventListener('keydown', (e) => {
       if ((e.ctrlKey || e.metaKey) && e.key === 't') {
         e.preventDefault();
         toggleTheme();
+        SFX.theme();
       }
     });
-    
-    // Detectar cambios en preferencia del sistema
+
     if (window.matchMedia) {
-      const darkModeQuery = window.matchMedia('(prefers-color-scheme: dark)');
-      darkModeQuery.addEventListener('change', (e) => {
-        if (!localStorage.getItem('theme')) {
-          applyTheme(e.matches ? 'dark' : 'light');
-        }
+      window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', (e) => {
+        if (!localStorage.getItem('theme')) applyTheme(e.matches ? 'dark' : 'light');
       });
     }
-    
-    // Aplicar tema guardado inmediatamente
+
     const theme = getSavedTheme();
     document.documentElement.setAttribute('data-theme', theme);
-    
-    // Crear botón de toggle cuando el DOM esté listo
-    const toggle = createThemeToggle();
-    if (toggle) {
-      toggle.addEventListener('click', toggleTheme);
-    }
-    
-    // Exportar funciones
+
+    // El botón lo crea app.js; solo aseguramos el ícono
+    const existing = document.querySelector('.theme-toggle');
+    if (existing) existing.innerHTML = theme === 'dark' ? '🌙' : '☀️';
+
     window.themeManager = {
       toggle: toggleTheme,
       set: applyTheme,
-      get: () => document.documentElement.getAttribute('data-theme') || 'light'
+      get: () => document.documentElement.getAttribute('data-theme') || 'dark'
     };
-    
-    console.log('🎨 Sistema de temas inicializado');
   }
-  
+
   // ====================================
-  // DROPDOWN FIX (POLLING SIMPLE - SIN LOOPS)
+  // DROPDOWN FIX — z-index y scroll con rueda
   // ====================================
-  
+
   function initDropdownFix() {
-    let overlayElement = null;
-    let lastDropdownCheck = new Set();
-    
-    // Crear overlay
-    function getOrCreateOverlay() {
-      if (!overlayElement) {
-        overlayElement = document.createElement('div');
-        overlayElement.className = 'dropdown-overlay';
-        overlayElement.style.cssText = `
-          position: fixed;
-          inset: 0;
-          z-index: 9999;
-          background: transparent;
-          display: none;
-          cursor: default;
-        `;
-        document.body.appendChild(overlayElement);
-        
-        overlayElement.addEventListener('click', () => {
-          closeAllDropdowns();
-        });
+    // Asegurar que el scroll con rueda del ratón funcione en los dropdowns
+    // aunque haya stopPropagation en elementos padres
+    document.addEventListener('wheel', (e) => {
+      const dropdown = e.target.closest('.custom-select-wrapper .sugerencias');
+      if (!dropdown) return;
+      // Permitir scroll nativo dentro del dropdown
+      e.stopPropagation();
+    }, { passive: true, capture: true });
+
+    // También touch scroll
+    document.addEventListener('touchmove', (e) => {
+      const dropdown = e.target.closest('.custom-select-wrapper .sugerencias');
+      if (dropdown) {
+        e.stopPropagation();
       }
-      return overlayElement;
-    }
-    
-    // Cerrar todos los dropdowns
-    function closeAllDropdowns() {
-      document.querySelectorAll('.sugerencias.active').forEach(dropdown => {
-        dropdown.classList.remove('active');
-        
-        // Restaurar z-index
-        const itemRow = dropdown.closest('.item-row');
-        if (itemRow) itemRow.style.zIndex = '';
-        
-        const wrapper = dropdown.closest('.custom-select-wrapper');
-        if (wrapper) {
-          wrapper.classList.remove('open');
-          wrapper.style.zIndex = '';
-        }
-        
-        const formSection = dropdown.closest('.form-section');
-        if (formSection) formSection.style.zIndex = '';
-      });
-      
-      const overlay = getOrCreateOverlay();
-      overlay.style.display = 'none';
-      lastDropdownCheck.clear();
-    }
-    
-    // Chequear dropdowns activos periódicamente (polling)
-    // Este método es simple y no causa loops infinitos
-    setInterval(() => {
-      const activeDropdowns = document.querySelectorAll('.sugerencias.active');
-      const overlay = getOrCreateOverlay();
-      
-      if (activeDropdowns.length > 0) {
-        // Hay dropdowns activos
-        overlay.style.display = 'block';
-        
-        // Ajustar z-index solo si no está ya ajustado
-        activeDropdowns.forEach(dropdown => {
-          // Usar ID o crear uno temporal para tracking
-          if (!dropdown.dataset.dropdownId) {
-            dropdown.dataset.dropdownId = 'dd-' + Date.now() + '-' + Math.random();
-          }
-          
-          const dropdownId = dropdown.dataset.dropdownId;
-          
-          // Solo log una vez por dropdown
-          if (!lastDropdownCheck.has(dropdownId)) {
-            const itemRow = dropdown.closest('.item-row');
-            if (itemRow) {
-              console.log('📦 Dropdown en item-row detectado');
-              lastDropdownCheck.add(dropdownId);
-            }
-          }
-          
-          const itemRow = dropdown.closest('.item-row');
-          if (itemRow && itemRow.style.zIndex !== '10000') {
-            itemRow.style.zIndex = '10000';
-          }
-          
-          const wrapper = dropdown.closest('.custom-select-wrapper');
-          if (wrapper && wrapper.style.zIndex !== '10000') {
-            wrapper.classList.add('open');
-            wrapper.style.zIndex = '10000';
-          }
-          
-          const formSection = dropdown.closest('.form-section');
-          if (formSection && formSection.style.zIndex !== '9998') {
-            formSection.style.zIndex = '9998';
-          }
-        });
-      } else {
-        // No hay dropdowns activos
-        if (overlay.style.display !== 'none') {
-          overlay.style.display = 'none';
-          lastDropdownCheck.clear();
-        }
-      }
-    }, 150); // Check cada 150ms
-    
-    // Cerrar con tecla Escape
+    }, { passive: true, capture: true });
+
+    // Cerrar dropdown con Escape
     document.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape' || e.keyCode === 27) {
-        closeAllDropdowns();
-      }
+      if (e.key !== 'Escape') return;
+      document.querySelectorAll('.custom-select-wrapper.open').forEach(w => {
+        w.classList.remove('open');
+        const l = w.querySelector('.sugerencias');
+        if (l) l.classList.remove('active');
+      });
     });
-    
-    // Exportar función
-    window.closeAllDropdowns = closeAllDropdowns;
-    
-    console.log('✅ Dropdown fix activado (polling simple)');
+
+    // Cerrar al click fuera
+    document.addEventListener('click', (e) => {
+      document.querySelectorAll('.custom-select-wrapper.open').forEach(w => {
+        if (!w.contains(e.target)) {
+          w.classList.remove('open');
+          const l = w.querySelector('.sugerencias');
+          if (l) l.classList.remove('active');
+        }
+      });
+    });
+
+    // Observer para elevar z-index de item-rows con dropdown abierto
+    const observer = new MutationObserver((mutations) => {
+      mutations.forEach(m => {
+        if (m.type !== 'attributes') return;
+        const wrapper = m.target;
+        if (!wrapper.classList.contains('custom-select-wrapper')) return;
+        const isOpen = wrapper.classList.contains('open');
+        const row = wrapper.closest('.item-row');
+        const section = wrapper.closest('.form-section');
+        if (row) row.style.zIndex = isOpen ? '10000' : '';
+        if (section) section.style.zIndex = isOpen ? '9998' : '';
+      });
+    });
+
+    function observeWrappers() {
+      document.querySelectorAll('.custom-select-wrapper').forEach(w => {
+        observer.observe(w, { attributes: true, attributeFilter: ['class'] });
+      });
+    }
+    observeWrappers();
+
+    // Volver a observar cuando se añadan nuevas filas
+    const bodyObserver = new MutationObserver(() => observeWrappers());
+    const itemsContainer = document.getElementById('contenedor-items');
+    if (itemsContainer) bodyObserver.observe(itemsContainer, { childList: true });
   }
-  
+
   // ====================================
-  // EFECTOS ADICIONALES
+  // EFECTOS VARIOS
   // ====================================
-  
+
   function initEffects() {
     // Scroll to top button
     const scrollBtn = document.createElement('button');
     scrollBtn.className = 'scroll-to-top';
     scrollBtn.innerHTML = '↑';
-    scrollBtn.style.cssText = `
-      position: fixed;
-      bottom: 30px;
-      right: 30px;
-      width: 50px;
-      height: 50px;
-      border-radius: 50%;
-      background: var(--accent);
-      color: white;
-      border: none;
-      cursor: pointer;
-      font-size: 1.5rem;
-      display: none;
-      align-items: center;
-      justify-content: center;
-      box-shadow: var(--shadow-lg);
-      z-index: 99;
-      transition: all 0.3s ease;
-    `;
-    
+    scrollBtn.title = 'Volver arriba';
+    scrollBtn.style.display = 'none';
+    document.body.appendChild(scrollBtn);
+
     scrollBtn.addEventListener('click', () => {
       window.scrollTo({ top: 0, behavior: 'smooth' });
+      SFX.click();
     });
-    
-    document.body.appendChild(scrollBtn);
-    
+
     window.addEventListener('scroll', () => {
-      scrollBtn.style.display = window.scrollY > 300 ? 'flex' : 'none';
+      scrollBtn.style.display = window.scrollY > 400 ? 'flex' : 'none';
     });
-    
-    // Toast helper
-    window.showToast = function(message, type = 'info', duration = 5000) {
-      const toastsContainer = document.getElementById('toasts');
-      if (!toastsContainer) return;
-      
-      const icons = {
-        success: '✓',
-        error: '✗',
-        warning: '⚠',
-        info: 'ℹ'
-      };
-      
-      const toast = document.createElement('div');
-      toast.className = `toast ${type}`;
-      toast.innerHTML = `
-        <div style="display: flex; align-items: center; gap: 1rem;">
-          <div style="font-size: 1.5rem;">${icons[type] || icons.info}</div>
-          <div>
-            <div style="font-weight: 600; margin-bottom: 0.25rem;">${type.charAt(0).toUpperCase() + type.slice(1)}</div>
-            <div style="font-size: 0.875rem; color: var(--text-secondary);">${message}</div>
-          </div>
-        </div>
-      `;
-      
-      toastsContainer.appendChild(toast);
-      
-      setTimeout(() => {
-        toast.style.opacity = '0';
-        toast.style.transform = 'translateX(400px)';
-        setTimeout(() => toast.remove(), 300);
-      }, duration);
-      
-      return toast;
-    };
-    
-    console.log('✨ Efectos adicionales listos');
+
+    // Exponer SFX globalmente por si app.js quiere usarlo
+    window.SFX = SFX;
   }
-  
+
   // ====================================
   // INICIALIZACIÓN
   // ====================================
-  
+
   function init() {
-    console.log('🔧 Inicializando Inventario LM...');
-    
     initThemeSystem();
-    
-    // Esperar un poco antes de iniciar el dropdown fix
-    // para asegurarnos de que el DOM esté estable
+    bindSounds();
+    initEffects();
+
     setTimeout(() => {
       initDropdownFix();
-      initEffects();
-    }, 500);
-    
-    console.log('✅ Inventario LM inicializado');
+      patchToastSound();
+    }, 600);
   }
-  
-  // Ejecutar cuando el DOM esté listo
+
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', init);
   } else {
     init();
   }
-  
+
 })();

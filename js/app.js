@@ -66,6 +66,46 @@ const getRankClass = rankId => {
   return nivel ? `rango-${nivel}` : '';
 };
 
+// ---------- Cálculo de porcentaje efectivo ----------
+/**
+ * Calcula el porcentaje efectivo a aplicar a un item.
+ * Si el item tiene porcentaje fijo y el porcentaje del rango es superior,
+ * usa el del rango. En caso contrario, usa el del item.
+ * @param {number|null} itemFixedPct - Porcentaje fijo del item (0-1) o null
+ * @param {number} rankPct - Porcentaje del rango (0-1)
+ * @returns {number} Porcentaje efectivo (0-1)
+ */
+const calculateEffectivePercentage = (itemFixedPct, rankPct) => {
+  if (itemFixedPct === null || typeof itemFixedPct !== 'number') {
+    return rankPct;
+  }
+  // Si el porcentaje del rango es superior, usarlo
+  return rankPct > itemFixedPct ? rankPct : itemFixedPct;
+};
+
+/**
+ * Obtiene el porcentaje a aplicar de un miembro considerando 500 aportaciones
+ * @param {Object} member - Objeto del miembro
+ * @param {Object} rankData - Datos del rango
+ * @returns {number} Porcentaje (0-1)
+ */
+const getMemberRankPercentage = (member, rankData) => {
+  if (!rankData) return 0;
+  if (member.tiene500 && typeof rankData.pct500 === 'number') {
+    return rankData.pct500;
+  }
+  return typeof rankData.pct === 'number' ? rankData.pct : 0;
+};
+
+// ---------- Debouncing helper para optimización de búsquedas ----------
+const createDebounce = (fn, delay = 300) => {
+  let timeout;
+  return function(...args) {
+    clearTimeout(timeout);
+    timeout = setTimeout(() => fn.apply(this, args), delay);
+  };
+};
+
 // ---------- Navegación (robusta y dinámica) ----------
 function switchToView(viewName) {
   document.querySelectorAll('.nav-btn').forEach(b => {
@@ -397,14 +437,14 @@ byId('form-registro')?.addEventListener('submit', async (e) => {
       }
     }
 
-    // calcular resumen (igual que ya tenías)...
+    // calcular resumen con lógica de porcentaje efectivo...
     let totalValor = 0; const lootParts = [];
     const rango = ranks[member.rankId] || {};
-    const pctRank = member.tiene500 ? (rango.pct500 || rango.pct || 0) : (rango.pct || 0);
+    const pctRank = getMemberRankPercentage(member, rango);
     for (const it of items) {
       const pctItem = (typeof it.pct === 'number') ? it.pct : null;
-      const eff = (pctItem !== null) ? pctItem : pctRank;
-      const valorUnit = Math.round((it.valorBase || 0) * (eff || 1));
+      const eff = calculateEffectivePercentage(pctItem, pctRank);
+      const valorUnit = Math.round((it.valorBase || 0) * eff);
       totalValor += valorUnit * (it.qty || 0);
       lootParts.push(`${it.nombre} x${it.qty}`);
     }
@@ -500,6 +540,117 @@ byId('form-registro')?.addEventListener('submit', async (e) => {
   }
 });
 
+// ---------- Editar Item del Catálogo ----------
+async function mostrarEditarItem(item) {
+  const modalContainer = document.createElement('div');
+  modalContainer.className = 'edit-item-modal-container';
+  modalContainer.innerHTML = `
+    <div class="edit-item-modal" style="position:fixed;inset:0;z-index:99999;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.5);padding:1rem;">
+      <div style="background:var(--bg-2);border-radius:var(--radius);padding:2rem;max-width:500px;width:100%;max-height:90vh;overflow-y:auto;border:1px solid var(--border);">
+        <h3 style="margin-bottom:1.5rem;font-size:1.25rem;">Editar Objeto</h3>
+        
+        <div class="form-section">
+          <label class="form-label">Nombre (no editable)</label>
+          <input type="text" value="${escapeHtml(item.nombre)}" disabled style="opacity:0.6;" />
+        </div>
+
+        <div class="form-section">
+          <label class="form-label">Valor Base ($)</label>
+          <input id="edit-valor" type="number" value="${item.valorBase || 0}" min="1" />
+        </div>
+
+        <div class="form-section">
+          <label class="form-label">Imagen (URL o nombre de archivo)</label>
+          <input id="edit-imagen" type="text" value="${escapeHtml(item.imagen || '')}" placeholder="ej: ak-47.png" />
+        </div>
+
+        <div class="form-section">
+          <label class="form-label">Porcentaje Fijo (%) - Dejar vacío para sin %</label>
+          <input id="edit-pct" type="number" value="${item.pct !== null && typeof item.pct === 'number' ? Math.round(item.pct * 100) : ''}" min="0" max="100" placeholder="ej: 80" />
+        </div>
+
+        <div class="form-section">
+          <label style="display:flex;align-items:center;gap:0.5rem;">
+            <input id="edit-pagable" type="checkbox" ${item.pagable !== false ? 'checked' : ''} />
+            <span>Es pagable</span>
+          </label>
+        </div>
+
+        <div style="display:flex;gap:0.75rem;margin-top:2rem;">
+          <button id="edit-cancel" class="btn-sec" style="flex:1;">Cancelar</button>
+          <button id="edit-save" class="btn-pri" style="flex:1;">Guardar</button>
+        </div>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(modalContainer);
+
+  const btnCancel = modalContainer.querySelector('#edit-cancel');
+  const btnSave = modalContainer.querySelector('#edit-save');
+  const inputValor = modalContainer.querySelector('#edit-valor');
+  const inputImagen = modalContainer.querySelector('#edit-imagen');
+  const inputPct = modalContainer.querySelector('#edit-pct');
+  const inputPagable = modalContainer.querySelector('#edit-pagable');
+
+  btnCancel?.addEventListener('click', () => {
+    modalContainer.remove();
+  });
+
+  btnSave?.addEventListener('click', async () => {
+    try {
+      const nuevoValor = Number(inputValor?.value) || 0;
+      if (nuevoValor <= 0) {
+        toast('Valor debe ser mayor a 0', 'error');
+        return;
+      }
+
+      const nuevoImagen = (inputImagen?.value || '').trim() || null;
+      const nuevoPctStr = (inputPct?.value || '').trim();
+      let nuevoPct = item.pct;
+      if (nuevoPctStr !== '') {
+        const n = Number(nuevoPctStr);
+        if (isNaN(n) || n < 0 || n > 100) {
+          toast('Porcentaje debe estar entre 0-100', 'error');
+          return;
+        }
+        nuevoPct = n / 100;
+      } else {
+        nuevoPct = null;
+      }
+
+      const nuevoPagable = inputPagable?.checked ?? true;
+
+      const updateData = {
+        valorBase: nuevoValor,
+        pagable: nuevoPagable,
+        pct: nuevoPct
+      };
+      if (nuevoImagen !== null) updateData.imagen = nuevoImagen;
+
+      await updateDoc(doc(db, 'items', item.id), updateData);
+      toast('Item actualizado', 'info', 1400);
+      modalContainer.remove();
+      renderCatalogo();
+      // Actualizar catálogo local
+      const idx = catalogo.findIndex(c => c.id === item.id);
+      if (idx !== -1) {
+        catalogo[idx] = { ...catalogo[idx], ...updateData };
+      }
+    } catch (err) {
+      console.error(err);
+      toast('Error actualizando item: ' + (err.message || err), 'error');
+    }
+  });
+
+  // Cerrar al clickear fuera
+  modalContainer.addEventListener('click', (e) => {
+    if (e.target === modalContainer) {
+      modalContainer.remove();
+    }
+  });
+}
+
 // ------------------ Renders ------------------
 function renderSelectRangos() {
   const sel = byId('mi-rango'); if (!sel) return;
@@ -563,9 +714,15 @@ function renderCatalogo() {
         >
           ${valorFmt} $
         </span>
+        <button class="btn-edit-item" data-id="${c.id}" title="Editar">✏️</button>
         <button class="btn-delete" data-id="${c.id}">🗑️</button>
       </div>
     `;
+
+    el.querySelector('.btn-edit-item')?.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      await mostrarEditarItem(c);
+    });
 
     el.querySelector('.btn-delete')?.addEventListener('click', async () => {
       if (!confirm('¿Borrar objeto del catálogo?')) return;
@@ -736,13 +893,16 @@ function showMemberSuggestions(q) {
   sugerenciasMiembro.classList.add('active');
 }
 
+// Debounce la búsqueda de miembros para mejor rendimiento
+const debouncedShowMemberSuggestions = createDebounce(showMemberSuggestions, 150);
+
 buscarMiembroInput?.addEventListener('input', (e) => {
   const q = (e.target.value || '').trim().toLowerCase();
   if (buscarMiembroInput.dataset.id) {
     const sel = membersLocal.find(m => m.id === buscarMiembroInput.dataset.id);
     if (!sel || ((sel.displayName || sel.username || '').toLowerCase() !== (e.target.value || '').toLowerCase())) buscarMiembroInput.dataset.id = '';
   }
-  showMemberSuggestions(q);
+  debouncedShowMemberSuggestions(q);
 });
 
 document.addEventListener('click', (e) => {
@@ -775,20 +935,23 @@ async function mostrarInventarioMiembro(miembro) {
     const snap = await getDocs(query(collection(db, 'inventories'), where('userId', '==', miembro.id)));
     const items = []; snap.forEach(d => items.push({ id: d.id, ...d.data() }));
 
+    // Crear un Map para búsquedas O(1) en lugar de O(n)
+    const catalogoMap = new Map(catalogo.map(c => [c.id, c]));
+
     const rango = ranks[miembro.rankId] || {};
     const basePct = (typeof rango.pct === 'number') ? rango.pct : 0;
     const pct500 = (typeof rango.pct500 === 'number') ? rango.pct500 : null;
-    const pctRankEffective = miembro.tiene500 ? (pct500 ?? basePct) : basePct;
+    const pctRank = getMemberRankPercentage(miembro, rango);
     const extraPct = (miembro.tiene500 && pct500 !== null && pct500 > basePct) ? Math.round((pct500 - basePct) * 100) : 0;
 
     const totalObjetos = items.reduce((s, it) => s + (Number(it.qty) || 0), 0);
 
     let totalValor = 0;
     for (const it of items) {
-      const itemMeta = catalogo.find(ci => ci.id === it.itemId) || {};
+      const itemMeta = catalogoMap.get(it.itemId) || {};
       const pctItem = (typeof itemMeta.pct === 'number') ? itemMeta.pct : null;
-      const eff = (pctItem !== null) ? pctItem : pctRankEffective;
-      const valorUnit = Math.round((itemMeta.valorBase || 0) * (eff || 1));
+      const eff = calculateEffectivePercentage(pctItem, pctRank);
+      const valorUnit = Math.round((itemMeta.valorBase || 0) * eff);
       totalValor += valorUnit * (it.qty || 0);
     }
     const totalValorFmt = formatNumber(totalValor);
@@ -815,15 +978,20 @@ async function mostrarInventarioMiembro(miembro) {
     let itemCards = '';
     if (items.length) {
       itemCards = items.map(it => {
-        const itemMeta = catalogo.find(ci => ci.id === it.itemId) || {};
+        const itemMeta = catalogoMap.get(it.itemId) || {};
         const pctItem = (typeof itemMeta.pct === 'number') ? itemMeta.pct : null;
-        const eff = (pctItem !== null) ? pctItem : pctRankEffective;
-        const valorUnit = Math.round((itemMeta.valorBase || 0) * (eff || 1));
+        const eff = calculateEffectivePercentage(pctItem, pctRank);
+        const valorUnit = Math.round((itemMeta.valorBase || 0) * eff);
 
         const fileName = itemMeta.imagen ? String(itemMeta.imagen) : 'default.png';
         const imageUrl = `./images/${encodeURIComponent(fileName)}`;
 
-        const pctHtml = pctItem !== null ? ` <strong class="pct-strong">(${Math.round(pctItem * 100)}%)</strong>` : '';
+        // Solo mostrar el porcentaje efectivo (el más alto)
+        let pctHtml = '';
+        if (pctItem !== null || pctRank > 0) {
+          const effDisplay = Math.round(eff * 100);
+          pctHtml = ` <strong class="pct-strong">${effDisplay}%</strong>`;
+        }
 
         return `
           <div class="item-card" data-inv-id="${it.id}">
@@ -1049,15 +1217,24 @@ document.addEventListener('DOMContentLoaded', () => {
   if (!membersLocal.length) cargarDatosIniciales().catch(() => { });
 });
 
-byId('filtro-miembros')?.addEventListener('input', (e) => {
-  const q = (e.target.value || '').trim();
+// Debounce para los filtros de búsqueda
+const debouncedRenderMiembros = createDebounce((q) => {
   renderMiembros(q);
   renderInventariosGrid(q);
+}, 200);
+
+const debouncedRenderInventarios = createDebounce((q) => {
+  renderInventariosGrid(q);
+}, 200);
+
+byId('filtro-miembros')?.addEventListener('input', (e) => {
+  const q = (e.target.value || '').trim();
+  debouncedRenderMiembros(q);
 });
 
 byId('buscador-inventario')?.addEventListener('input', (e) => {
   const q = (e.target.value || '').trim();
-  renderInventariosGrid(q);
+  debouncedRenderInventarios(q);
 });
 
 if (!document.querySelector('.theme-toggle')) {

@@ -2264,6 +2264,8 @@ select.error {
 .custom-select-search {
   width: 100%;
   padding: 0.75rem;
+  padding-left: 1.25rem !important;
+  min-height: 50px;
   margin: 0.5rem 0;
   border: 1px solid var(--border-hover);
   border-radius: var(--radius-sm);
