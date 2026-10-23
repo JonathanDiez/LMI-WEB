@@ -220,17 +220,16 @@
 
           <!-- INVENTARIOS -->
           <div id="view-inventarios" class="view">
-            <div class="view-header">
-              <h3>🎒 Inventarios de Miembros</h3>
-              <p class="sub">Consulta inventarios por usuario o busca quién tiene un objeto específico</p>
+            <div class="view-header" style="display:flex;justify-content:space-between;align-items:center;gap:1rem;flex-wrap:wrap;">
+              <div>
+                <h3>🎒 Inventarios de Miembros</h3>
+                <p class="sub">Consulta inventarios por usuario o busca quién tiene un objeto específico</p>
+              </div>
+              <div style="text-align:right;">
+                <div class="small">Total a pagar a todos los miembros</div>
+                <strong id="total-pagar" style="font-size:1.5rem;">0 $</strong>
+              </div>
             </div>
-
-            <div class="search-section">
-              <input id="buscador-inventario" placeholder="🔍 Buscar por nombre de usuario o por objeto..." />
-            </div>
-
-            <div id="grid-inventarios" class="inventarios-grid"></div>
-          </div>
         </section>
       </section>
     </main>
