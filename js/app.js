@@ -222,7 +222,7 @@ function watchCollectionsRealtime() {
   unsubscribeFns = [];
 
   addUnsub(onSnapshot(collection(db, 'items'), snap => {
-    catalogo = []; snap.forEach(d => catalogo.push({ id: d.id, ...d.data() })); renderCatalogo();
+    catalogo = []; snap.forEach(d => catalogo.push({ id: d.id, ...d.data() })); renderCatalogo(); renderTotalPagar();
   }));
 
   addUnsub(onSnapshot(collection(db, 'ranks'), snap => {
@@ -783,7 +783,27 @@ function renderMiembros(filter = '') {
   filtered.forEach(m => grid.appendChild(createMemberCard(m)));
 }
 
+const valorUnitario = (member, item) => {
+  const pctItem = typeof item.pct === 'number' ? item.pct : null;
+  const pctRank = getMemberRankPercentage(member, ranks[member.rankId]);
+  return Math.round((item.valorBase || 0) * calculateEffectivePercentage(pctItem, pctRank));
+};
+
+function renderTotalPagar() {
+  const el = byId('total-pagar'); if (!el) return;
+  const catMap = new Map(catalogo.map(c => [c.id, c]));
+  let total = 0;
+  for (const m of membersLocal) {
+    for (const it of inventoriesLocal[m.id] || []) {
+      const meta = catMap.get(it.itemId);
+      if (meta && meta.pagable !== false) total += valorUnitario(m, meta) * (Number(it.qty) || 0);
+    }
+  }
+  el.textContent = formatNumber(total) + ' $';
+}
+
 function renderInventariosGrid(filter = '') {
+  renderTotalPagar();
   const grid = byId('grid-inventarios'); if (!grid) return; grid.innerHTML = '';
   const q = (filter || '').toLowerCase();
   const membersSorted = [...membersLocal].sort((a, b) => (ranks[b.rankId]?.nivel || 0) - (ranks[a.rankId]?.nivel || 0));
